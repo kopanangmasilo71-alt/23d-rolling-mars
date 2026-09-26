@@ -1,0 +1,6 @@
+{
+  "name": "Roll Runner",
+  "description": "A 3D mobile endless runner where a primitive humanoid dodges rolling spherical boulders with smooth analog touch physics.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
