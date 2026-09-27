@@ -766,31 +766,31 @@ class ParticleSystem(val maxParticles: Int = 320) {
         for (p in particles) {
             if (p.lifetime <= 0f) {
                 p.particleType = ParticleType.DUST_CLOUD
-                // Emit at ground contact patch slightly behind the ball center
-                val offsetX = (kotlin.random.Random.nextFloat() - 0.5f) * (radius * 0.6f)
-                val offsetZ = -radius * 0.55f + (kotlin.random.Random.nextFloat() - 0.5f) * 0.2f
-                p.position.set(origin.x + offsetX, 0.06f, origin.z + offsetZ)
+                // Emit at ground contact patch directly behind the rolling ball
+                val offsetX = (kotlin.random.Random.nextFloat() - 0.5f) * (radius * 0.85f)
+                val offsetZ = -radius * 0.65f + (kotlin.random.Random.nextFloat() - 0.5f) * 0.25f
+                p.position.set(origin.x + offsetX, 0.07f, origin.z + offsetZ)
 
-                // Swirling billowing velocity (gentle and low)
-                val vx = (kotlin.random.Random.nextFloat() - 0.5f) * 1.8f
-                val vy = kotlin.random.Random.nextFloat() * 1.0f + 0.2f
-                val vz = kotlin.random.Random.nextFloat() * 1.8f + 0.8f
+                // Swirling billowing velocity (hugs the ground, spreads laterally)
+                val vx = (kotlin.random.Random.nextFloat() - 0.5f) * 2.2f
+                val vy = kotlin.random.Random.nextFloat() * 0.18f + 0.04f // Low, ground-hugging
+                val vz = -kotlin.random.Random.nextFloat() * 1.4f - 0.4f // Gentle drift behind ball
                 p.velocity.set(vx, vy, vz)
 
-                p.lifetime = 0.45f + kotlin.random.Random.nextFloat() * 0.20f
+                p.lifetime = 0.52f + kotlin.random.Random.nextFloat() * 0.22f
                 p.maxLife = p.lifetime
-                // Compact scale so particles do not block upcoming road hazards
-                p.size = radius * (0.16f + kotlin.random.Random.nextFloat() * 0.08f)
-                p.growthRate = 0.25f + kotlin.random.Random.nextFloat() * 0.15f
+                // Moderately sized road dust: clearly visible, but ground-hugging so it never hides incoming balls
+                p.size = radius * (0.42f + kotlin.random.Random.nextFloat() * 0.12f)
+                p.growthRate = 0.28f + kotlin.random.Random.nextFloat() * 0.12f
                 p.rotation = kotlin.random.Random.nextFloat() * 360f
-                p.rotSpeed = (kotlin.random.Random.nextFloat() - 0.5f) * 80f
+                p.rotSpeed = (kotlin.random.Random.nextFloat() - 0.5f) * 60f
 
-                // Neutral warm asphalt road dust with minimal tint (prevents pink/magenta smog)
-                val tint = 0.05f
-                p.color[0] = 0.82f * (1f - tint) + baseColor[0] * tint
-                p.color[1] = 0.80f * (1f - tint) + baseColor[1] * tint
+                // Warm asphalt road dust with soft transparency
+                val tint = 0.08f
+                p.color[0] = 0.88f * (1f - tint) + baseColor[0] * tint
+                p.color[1] = 0.84f * (1f - tint) + baseColor[1] * tint
                 p.color[2] = 0.78f * (1f - tint) + baseColor[2] * tint
-                p.color[3] = 0.26f // Delicate semi-transparency
+                p.color[3] = 0.32f // Clearly visible initial translucency, delicate so it never hides obstacles
 
                 emitted++
                 if (emitted >= count) break
@@ -859,28 +859,28 @@ class ParticleSystem(val maxParticles: Int = 320) {
             }
         }
 
-        // 3. Billowing mushrooming dust puffs (tuned for light semi-transparency and obstacle visibility)
+        // 3. Billowing mushrooming dust puffs (ground-hugging, clear visibility, never hides upcoming balls)
         var dustEmitted = 0
         for (p in particles) {
             if (p.lifetime <= 0f) {
                 p.particleType = ParticleType.DUST_CLOUD
                 p.position.set(
-                    origin.x + (kotlin.random.Random.nextFloat() - 0.5f) * radius * 0.6f,
+                    origin.x + (kotlin.random.Random.nextFloat() - 0.5f) * radius * 0.8f,
                     0.08f,
-                    origin.z + (kotlin.random.Random.nextFloat() - 0.5f) * radius * 0.6f
+                    origin.z + (kotlin.random.Random.nextFloat() - 0.5f) * radius * 0.8f
                 )
                 p.velocity.set(
-                    (kotlin.random.Random.nextFloat() - 0.5f) * 3.0f,
-                    kotlin.random.Random.nextFloat() * 1.8f + 0.5f,
-                    (kotlin.random.Random.nextFloat() - 0.5f) * 3.0f
+                    (kotlin.random.Random.nextFloat() - 0.5f) * 3.2f,
+                    kotlin.random.Random.nextFloat() * 0.22f + 0.04f,
+                    (kotlin.random.Random.nextFloat() - 0.5f) * 3.2f
                 )
-                p.lifetime = 0.60f + kotlin.random.Random.nextFloat() * 0.30f
+                p.lifetime = 0.58f + kotlin.random.Random.nextFloat() * 0.22f
                 p.maxLife = p.lifetime
-                p.size = radius * 0.28f
-                p.growthRate = 0.40f
+                p.size = radius * 0.40f
+                p.growthRate = 0.36f
                 p.rotation = kotlin.random.Random.nextFloat() * 360f
                 p.rotSpeed = (kotlin.random.Random.nextFloat() - 0.5f) * 90f
-                p.color[0] = 0.85f; p.color[1] = 0.82f; p.color[2] = 0.78f; p.color[3] = 0.28f
+                p.color[0] = 0.88f; p.color[1] = 0.84f; p.color[2] = 0.80f; p.color[3] = 0.40f
 
                 dustEmitted++
                 if (dustEmitted >= 6) break
@@ -1063,25 +1063,25 @@ class ParticleSystem(val maxParticles: Int = 320) {
         }
     }
 
-    fun update(dt: Float) {
+    fun update(dt: Float, worldScrollZ: Float = 0f) {
         for (p in particles) {
             if (p.lifetime > 0f) {
                 p.lifetime -= dt
+                p.position.z += worldScrollZ
 
                 when (p.particleType) {
                     ParticleType.DUST_CLOUD -> {
-                        // Soft billowing dust expands gently without occluding the runner view
+                        // Soft billowing dust expands horizontally along the ground without rising to occlude incoming balls
                         p.size += p.growthRate * dt
                         p.velocity.x *= (1f - dt * 2.2f).coerceAtLeast(0f)
                         p.velocity.z *= (1f - dt * 2.2f).coerceAtLeast(0f)
-                        p.velocity.y += 0.25f * dt // gentle thermal updraft
+                        p.velocity.y *= (1f - dt * 3.0f).coerceAtLeast(0f)
                         p.position.x += p.velocity.x * dt
-                        p.position.y += p.velocity.y * dt
+                        p.position.y = (p.position.y + p.velocity.y * dt).coerceIn(0.04f, 0.38f)
                         p.position.z += p.velocity.z * dt
                         p.rotation += p.rotSpeed * dt
-                        val alphaFactor = (p.lifetime / p.maxLife).coerceIn(0f, 1f)
-                        // Smooth quadratic falloff to pure transparency
-                        p.color[3] = alphaFactor * alphaFactor * 0.25f
+                        val lifeRatio = (p.lifetime / p.maxLife).coerceIn(0f, 1f)
+                        p.color[3] = lifeRatio * 0.32f
                     }
                     ParticleType.ROCK_DEBRIS -> {
                         // Tumbling rock fragments with realistic gravity & asphalt bounce

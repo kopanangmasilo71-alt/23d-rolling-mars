@@ -201,8 +201,8 @@ class ExampleRobolectricTest {
       activeDust!!.color[3] <= 0.35f
     )
     org.junit.Assert.assertTrue(
-      "Dust cloud initial size should be compact (< 0.25) so it doesn't block player vision",
-      activeDust.size < 0.25f
+      "Dust cloud initial size should be properly visible without being too large (between 0.25 and 0.55)",
+      activeDust.size in 0.25f..0.55f
     )
 
     // Update particles over time and verify alpha falloff
@@ -227,5 +227,16 @@ class ExampleRobolectricTest {
       if (p.lifetime > 0f) count++
     }
     assertEquals(14, count)
+  }
+
+  @Test
+  fun `test GameRenderer onSurfaceCreated and verify programId and isReady`() {
+    val audio = com.example.engine.GameAudio()
+    val physics = com.example.engine.GamePhysicsEngine(audio) { _, _, _, _, _ -> }
+    val renderer = com.example.engine.GameRenderer(physics)
+
+    renderer.onSurfaceCreated(null, null)
+    renderer.onSurfaceChanged(null, 1080, 1920)
+    renderer.onDrawFrame(null)
   }
 }

@@ -270,11 +270,6 @@ class GamePhysicsEngine(
             }
         }
 
-        // Turbo speed streaks when boosting or sprinting in high sectors
-        if (player.isBoosting || player.forwardSpeed > 14.5f) {
-            particles.emitSpeedStreak(player.position, 2, player.neonGlowColor)
-        }
-
         // 4. Road scrolling & distance tracking
         val sectorSpeedMult = currentSector.speedMultiplier * (if (isOverdriveMode) 1.25f else 1.0f)
         val forwardDelta = player.forwardSpeed * sectorSpeedMult * clampedDt
@@ -366,12 +361,13 @@ class GamePhysicsEngine(
 
                 if (latDist < 1.35f && longDist < 1.45f && vertDist < 1.5f) {
                     col.isActive = false
+                    col.position.set(0f, -200f, 0f)
                     when (col.type) {
                         CollectibleType.SHIELD -> {
                             player.activateShield(14f)
                             audio.playShieldPickup()
                             particles.emitShockwave(
-                                Vector3(player.position.x, 0.1f, player.position.z),
+                                Vector3(player.position.x, 0.05f, player.position.z),
                                 28,
                                 col.type.color
                             )
@@ -379,13 +375,17 @@ class GamePhysicsEngine(
                         CollectibleType.SPEED_BOOST -> {
                             player.applySpeedBoost(6.0f)
                             audio.playSpeedPad()
-                            particles.emitSpeedStreak(player.position, 6, col.type.color)
+                            particles.emitShockwave(
+                                Vector3(player.position.x, 0.05f, player.position.z),
+                                20,
+                                col.type.color
+                            )
                         }
                         CollectibleType.SCORE_MULTIPLIER -> {
                             player.activateScoreMultiplier(9.0f, 2)
                             audio.playPowerUpPickup()
                             particles.emitShockwave(
-                                Vector3(player.position.x, 0.1f, player.position.z),
+                                Vector3(player.position.x, 0.05f, player.position.z),
                                 24,
                                 col.type.color
                             )
@@ -398,8 +398,8 @@ class GamePhysicsEngine(
                     }
 
                     particles.emitBurst(
-                        Vector3(col.position.x, col.position.y, col.position.z),
-                        14,
+                        Vector3(player.position.x, 0.05f, player.position.z),
+                        12,
                         col.type.color
                     )
                     cameraShakeMagnitude = (cameraShakeMagnitude + 0.12f).coerceAtMost(0.35f)
@@ -430,7 +430,7 @@ class GamePhysicsEngine(
                 val isNearGround = ball.position.y <= (ball.radius + 0.15f)
                 if (isNearGround) {
                     ball.trailDustTimer += clampedDt
-                    val dustInterval = if (ball.ballType == BallType.GIANT) 0.07f else 0.095f
+                    val dustInterval = if (ball.ballType == BallType.GIANT) 0.065f else 0.085f
                     if (ball.trailDustTimer >= dustInterval) {
                         ball.trailDustTimer = 0f
                         particles.emitBoulderTrailDust(ball.position, ball.radius, ball.forwardVelocity, ball.colorA)
@@ -541,8 +541,8 @@ class GamePhysicsEngine(
             spawnObstacleWave()
         }
 
-        // 8. Update Particles
-        particles.update(clampedDt)
+        // 8. Update Particles (synchronized with forward road scroll)
+        particles.update(clampedDt, forwardDelta)
 
         // 9. Camera Shake Decay & Follow Camera
         if (cameraShakeMagnitude > 0f) {

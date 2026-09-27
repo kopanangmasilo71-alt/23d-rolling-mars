@@ -40,6 +40,8 @@ data class LiveGameStats(
     val forwardSpeed: Float = 10f,
     val isBraking: Boolean = false,
     val isBoosting: Boolean = false,
+    val boostProgress: Float = 0f,
+    val boostRemainingSec: Int = 0,
     val isGrounded: Boolean = true,
     val sectorName: String = "SECTOR 1",
     val sectorSubtitle: String = "OUTPOST DAWN",
@@ -48,8 +50,10 @@ data class LiveGameStats(
     val hasBeatenHighScore: Boolean = false,
     val hasShield: Boolean = false,
     val shieldProgress: Float = 0f,
+    val shieldRemainingSec: Int = 0,
     val isScoreBoosted: Boolean = false,
     val scoreMultiplierProgress: Float = 0f,
+    val scoreMultiplierRemainingSec: Int = 0,
     val scoreMultiplierValue: Int = 1,
     val timeOfDayName: String = "DAWN",
     val timeOfDayEmoji: String = "🌅",
@@ -343,6 +347,10 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }
 
+            val shieldRem = if (physics.player.isShieldActive) kotlin.math.ceil(physics.player.shieldTimer).toInt() else 0
+            val multRem = if (physics.player.isScoreBoosted) kotlin.math.ceil(physics.player.scoreMultiplierTimer).toInt() else 0
+            val boostRem = if (physics.player.isBoosting) kotlin.math.ceil(physics.player.boostTimer).toInt() else 0
+
             _liveStats.value = LiveGameStats(
                 score = currentScore,
                 distanceMeters = physics.distanceTraveled.toInt(),
@@ -352,6 +360,8 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
                 forwardSpeed = physics.player.forwardSpeed * physics.currentSector.speedMultiplier,
                 isBraking = renderer.isBrakeHeld,
                 isBoosting = physics.player.isBoosting,
+                boostProgress = if (physics.player.isBoosting) (physics.player.boostTimer / 4.0f).coerceIn(0f, 1f) else 0f,
+                boostRemainingSec = boostRem,
                 isGrounded = physics.player.isGrounded,
                 sectorName = physics.currentSector.name,
                 sectorSubtitle = physics.currentSector.subtitle,
@@ -362,10 +372,12 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
                 shieldProgress = if (physics.player.isShieldActive && physics.player.maxShieldDuration > 0f) {
                     (physics.player.shieldTimer / physics.player.maxShieldDuration).coerceIn(0f, 1f)
                 } else 0f,
+                shieldRemainingSec = shieldRem,
                 isScoreBoosted = physics.player.isScoreBoosted,
                 scoreMultiplierProgress = if (physics.player.isScoreBoosted && physics.player.maxMultiplierDuration > 0f) {
                     (physics.player.scoreMultiplierTimer / physics.player.maxMultiplierDuration).coerceIn(0f, 1f)
                 } else 0f,
+                scoreMultiplierRemainingSec = multRem,
                 scoreMultiplierValue = physics.player.scoreMultiplierValue,
                 timeOfDayName = tod.phase.title,
                 timeOfDayEmoji = tod.phase.emoji,

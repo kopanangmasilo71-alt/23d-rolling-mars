@@ -181,7 +181,7 @@ fun GameHud(
             exit = slideOutVertically(targetOffsetY = { -it }) + fadeOut(),
             modifier = Modifier
                 .align(Alignment.TopCenter)
-                .padding(top = 115.dp)
+                .padding(top = 96.dp)
         ) {
             collectiblePickup?.let { col ->
                 val colColor = when (col) {
@@ -239,8 +239,8 @@ fun GameHud(
             enter = scaleIn(tween(150)) + fadeIn(),
             exit = scaleOut(tween(250)) + fadeOut(),
             modifier = Modifier
-                .align(Alignment.Center)
-                .padding(bottom = 70.dp)
+                .align(Alignment.TopCenter)
+                .padding(top = 96.dp)
         ) {
             Surface(
                 shape = RoundedCornerShape(24.dp),
@@ -296,8 +296,8 @@ fun GameHud(
             enter = scaleIn(tween(150)) + fadeIn(),
             exit = scaleOut(tween(250)) + fadeOut(),
             modifier = Modifier
-                .align(Alignment.Center)
-                .padding(bottom = 60.dp)
+                .align(Alignment.TopCenter)
+                .padding(top = 96.dp)
         ) {
             Surface(
                 shape = RoundedCornerShape(20.dp),
@@ -472,43 +472,57 @@ private fun TopHudBar(
                 }
             }
 
-            // Active Power-ups Status Row
-            if (stats.hasShield || stats.isScoreBoosted) {
+            // Active Power-ups Status Row (Presented prominently at top just like distance travelled)
+            if (stats.hasShield || stats.isScoreBoosted || stats.isBoosting) {
+                Spacer(modifier = Modifier.height(4.dp))
                 Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 4.dp, bottom = 2.dp),
+                    modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     if (stats.hasShield) {
                         Surface(
-                            shape = RoundedCornerShape(8.dp),
+                            shape = RoundedCornerShape(10.dp),
                             color = Color(0x3300E5FF),
-                            border = androidx.compose.foundation.BorderStroke(0.8.dp, Color(0xFF00E5FF))
+                            border = androidx.compose.foundation.BorderStroke(1.2.dp, Color(0xFF00E5FF)),
+                            modifier = Modifier.weight(1f)
                         ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                            Column(
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
                             ) {
-                                Icon(
-                                    imageVector = Icons.Default.Security,
-                                    contentDescription = null,
-                                    tint = Color(0xFF00E5FF),
-                                    modifier = Modifier.size(13.dp)
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text(
-                                    text = "SHIELD ACTIVE",
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Black,
-                                    color = Color(0xFF00E5FF)
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(
+                                            imageVector = Icons.Default.Security,
+                                            contentDescription = "Shield Active",
+                                            tint = Color(0xFF00E5FF),
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(
+                                            text = "SHIELD",
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Black,
+                                            color = Color(0xFF00E5FF),
+                                            letterSpacing = 0.5.sp
+                                        )
+                                    }
+                                    Text(
+                                        text = "${stats.shieldRemainingSec}s",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Black,
+                                        color = Color.White
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(3.dp))
                                 LinearProgressIndicator(
                                     progress = { stats.shieldProgress },
                                     modifier = Modifier
-                                        .width(36.dp)
+                                        .fillMaxWidth()
                                         .height(4.dp)
                                         .clip(RoundedCornerShape(2.dp)),
                                     color = Color(0xFF00E5FF),
@@ -520,36 +534,103 @@ private fun TopHudBar(
 
                     if (stats.isScoreBoosted) {
                         Surface(
-                            shape = RoundedCornerShape(8.dp),
+                            shape = RoundedCornerShape(10.dp),
                             color = Color(0x33FFD54F),
-                            border = androidx.compose.foundation.BorderStroke(0.8.dp, Color(0xFFFFD54F))
+                            border = androidx.compose.foundation.BorderStroke(1.2.dp, Color(0xFFFFD54F)),
+                            modifier = Modifier.weight(1f)
                         ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                            Column(
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
                             ) {
-                                Icon(
-                                    imageVector = Icons.Default.Stars,
-                                    contentDescription = null,
-                                    tint = Color(0xFFFFD54F),
-                                    modifier = Modifier.size(13.dp)
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text(
-                                    text = "${stats.scoreMultiplierValue}X SCORE",
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Black,
-                                    color = Color(0xFFFFD54F)
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(
+                                            imageVector = Icons.Default.Stars,
+                                            contentDescription = "Score Multiplier Active",
+                                            tint = Color(0xFFFFD54F),
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(
+                                            text = "${stats.scoreMultiplierValue}X SCORE",
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Black,
+                                            color = Color(0xFFFFD54F),
+                                            letterSpacing = 0.5.sp
+                                        )
+                                    }
+                                    Text(
+                                        text = "${stats.scoreMultiplierRemainingSec}s",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Black,
+                                        color = Color.White
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(3.dp))
                                 LinearProgressIndicator(
                                     progress = { stats.scoreMultiplierProgress },
                                     modifier = Modifier
-                                        .width(36.dp)
+                                        .fillMaxWidth()
                                         .height(4.dp)
                                         .clip(RoundedCornerShape(2.dp)),
                                     color = Color(0xFFFFD54F),
                                     trackColor = Color(0x33FFD54F)
+                                )
+                            }
+                        }
+                    }
+
+                    if (stats.isBoosting) {
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = Color(0x3300E676),
+                            border = androidx.compose.foundation.BorderStroke(1.2.dp, Color(0xFF00E676)),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(
+                                            imageVector = Icons.Default.Speed,
+                                            contentDescription = "Hyper Boost Active",
+                                            tint = Color(0xFF00E676),
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(
+                                            text = "BOOST",
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Black,
+                                            color = Color(0xFF00E676),
+                                            letterSpacing = 0.5.sp
+                                        )
+                                    }
+                                    Text(
+                                        text = "${stats.boostRemainingSec}s",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Black,
+                                        color = Color.White
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(3.dp))
+                                LinearProgressIndicator(
+                                    progress = { stats.boostProgress },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(4.dp)
+                                        .clip(RoundedCornerShape(2.dp)),
+                                    color = Color(0xFF00E676),
+                                    trackColor = Color(0x3300E676)
                                 )
                             }
                         }
@@ -559,7 +640,7 @@ private fun TopHudBar(
 
             Spacer(modifier = Modifier.height(4.dp))
 
-            // Main Stats Row: Distance & Score & Dodges
+            // Main Stats Row: Distance, Active Power, Score & Dodges
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -576,10 +657,83 @@ private fun TopHudBar(
                     )
                     Text(
                         text = "${stats.distanceMeters}m",
-                        fontSize = 19.sp,
+                        fontSize = 18.sp,
                         fontWeight = FontWeight.Black,
                         color = Color.White
                     )
+                }
+
+                // Active Power (Presented at the top just like distance travelled)
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        text = "ACTIVE POWER",
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = when {
+                            stats.hasShield -> Color(0xFF00E5FF)
+                            stats.isBoosting -> Color(0xFF00E676)
+                            stats.isScoreBoosted -> Color(0xFFFFD54F)
+                            else -> Color(0xFF78909C)
+                        },
+                        letterSpacing = 1.sp
+                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        when {
+                            stats.hasShield -> {
+                                Icon(
+                                    imageVector = Icons.Default.Security,
+                                    contentDescription = "Shield Active",
+                                    tint = Color(0xFF00E5FF),
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(3.dp))
+                                Text(
+                                    text = "SHIELD ${stats.shieldRemainingSec}s",
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.Black,
+                                    color = Color(0xFF00E5FF)
+                                )
+                            }
+                            stats.isBoosting -> {
+                                Icon(
+                                    imageVector = Icons.Default.Speed,
+                                    contentDescription = "Hyper Boost Active",
+                                    tint = Color(0xFF00E676),
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(3.dp))
+                                Text(
+                                    text = "BOOST ${stats.boostRemainingSec}s",
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.Black,
+                                    color = Color(0xFF00E676)
+                                )
+                            }
+                            stats.isScoreBoosted -> {
+                                Icon(
+                                    imageVector = Icons.Default.Stars,
+                                    contentDescription = "Score Multiplier Active",
+                                    tint = Color(0xFFFFD54F),
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(3.dp))
+                                Text(
+                                    text = "${stats.scoreMultiplierValue}X (${stats.scoreMultiplierRemainingSec}s)",
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.Black,
+                                    color = Color(0xFFFFD54F)
+                                )
+                            }
+                            else -> {
+                                Text(
+                                    text = "NONE",
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF546E7A)
+                                )
+                            }
+                        }
+                    }
                 }
 
                 // Score
@@ -593,7 +747,7 @@ private fun TopHudBar(
                     )
                     Text(
                         text = "${stats.score}",
-                        fontSize = 24.sp,
+                        fontSize = 18.sp,
                         fontWeight = FontWeight.Black,
                         color = if (stats.hasBeatenHighScore) Color(0xFFFFD54F) else Color.White
                     )
@@ -610,7 +764,7 @@ private fun TopHudBar(
                     )
                     Text(
                         text = "${stats.ballsDodged}",
-                        fontSize = 19.sp,
+                        fontSize = 18.sp,
                         fontWeight = FontWeight.Black,
                         color = Color.White
                     )

@@ -40,7 +40,9 @@ class GameRenderer(val physics: GamePhysicsEngine) : GLSurfaceView.Renderer {
 
     // Matrices
     private val viewMatrix = FloatArray(16)
-    private val projectionMatrix = FloatArray(16)
+    private val projectionMatrix = FloatArray(16).apply {
+        Matrix.perspectiveM(this, 0, 64f, 9f / 16f, 0.5f, 160f)
+    }
     private val projViewMatrix = FloatArray(16)
     private val mvpMatrix = FloatArray(16)
     private val matrixStack = MatrixStack()
@@ -114,6 +116,7 @@ class GameRenderer(val physics: GamePhysicsEngine) : GLSurfaceView.Renderer {
     private var currentStreetLightEmissive = 0.40f
 
     private val vertexShaderSource = """
+        precision mediump float;
         uniform mat4 uViewProjMatrix;
         uniform mat4 uModelMatrix;
         uniform vec4 uColorOverride;
@@ -136,7 +139,7 @@ class GameRenderer(val physics: GamePhysicsEngine) : GLSurfaceView.Renderer {
             worldPos.y -= forwardDist * forwardDist * uCurvature;
 
             vPosition = worldPos.xyz;
-            mat3 normalMatrix = mat3(uModelMatrix);
+            mat3 normalMatrix = mat3(uModelMatrix[0].xyz, uModelMatrix[1].xyz, uModelMatrix[2].xyz);
             vNormal = normalize(normalMatrix * aNormal);
             if (uColorOverride.a > 0.0) {
                 vColor = uColorOverride;
@@ -177,13 +180,15 @@ class GameRenderer(val physics: GamePhysicsEngine) : GLSurfaceView.Renderer {
             float halfLambert = NdotL * 0.70 + 0.30;
             vec3 diffuse = uLightColor * halfLambert;
 
-            // Blinn-Phong Specular Highlight (AAA metallic / glossy sheen)
+            // Blinn-Phong Specular Highlight (safe base > 0.0)
             vec3 halfVector = normalize(lightDir + viewDir);
-            float specFactor = pow(max(dot(norm, halfVector), 0.0), 32.0);
+            float NdotH = max(dot(norm, halfVector), 0.0);
+            float specFactor = (NdotH > 0.0) ? pow(NdotH, 32.0) : 0.0;
             vec3 specular = uLightColor * (specFactor * 0.50);
 
-            // Fresnel Rim Lighting (Crisp cinematic edge glow)
-            float rimFactor = pow(1.0 - max(dot(norm, viewDir), 0.0), 3.0);
+            // Fresnel Rim Lighting (safe base > 0.0)
+            float NdotV = clamp(dot(norm, viewDir), 0.0, 1.0);
+            float rimFactor = pow(1.0 - NdotV, 3.0);
             vec3 rimLight = vec3(0.35, 0.75, 1.0) * (rimFactor * 0.50);
 
             // Combined Surface Lighting
@@ -241,12 +246,36 @@ class GameRenderer(val physics: GamePhysicsEngine) : GLSurfaceView.Renderer {
             GLES20.glClearColor(0.06f, 0.08f, 0.16f, 1.0f)
             GLES20.glEnable(GLES20.GL_DEPTH_TEST)
             GLES20.glDepthFunc(GLES20.GL_LEQUAL)
-            GLES20.glEnable(GLES20.GL_CULL_FACE)
-            GLES20.glCullFace(GLES20.GL_BACK)
+            GLES20.glDisable(GLES20.GL_CULL_FACE)
 
             programId = ShaderUtil.createProgram(vertexShaderSource, fragmentShaderSource)
             if (programId == 0) {
-                android.util.Log.e("GameRenderer", "Failed to compile/link AAA shader program")
+                android.util.Log.e("GameRenderer", "Failed to compile main shader, compiling resilient fallback shader")
+                val fallbackVs = """
+                    precision mediump float;
+                    uniform mat4 uViewProjMatrix;
+                    uniform mat4 uModelMatrix;
+                    uniform vec4 uColorOverride;
+                    attribute vec3 aPosition;
+                    attribute vec4 aColor;
+                    varying vec4 vColor;
+                    void main() {
+                        vec4 worldPos = uModelMatrix * vec4(aPosition, 1.0);
+                        vColor = (uColorOverride.a > 0.0) ? uColorOverride : aColor;
+                        gl_Position = uViewProjMatrix * worldPos;
+                    }
+                """.trimIndent()
+                val fallbackFs = """
+                    precision mediump float;
+                    varying vec4 vColor;
+                    void main() {
+                        gl_FragColor = vColor;
+                    }
+                """.trimIndent()
+                programId = ShaderUtil.createProgram(fallbackVs, fallbackFs)
+            }
+            if (programId == 0) {
+                android.util.Log.e("GameRenderer", "Fatal: both main and fallback shader failed")
                 return
             }
 
@@ -505,34 +534,40 @@ class GameRenderer(val physics: GamePhysicsEngine) : GLSurfaceView.Renderer {
         emissive: Float = 0f,
         curvature: Float = 0.00095f
     ) {
-        if (!isReady || programId == 0 || aPositionLoc < 0 || aNormalLoc < 0 || aColorLoc < 0) return
+        if (!isReady || programId == 0 || aPositionLoc < 0) return
 
         val model = matrixStack.get()
-        GLES20.glUniformMatrix4fv(uModelMatrixLoc, 1, false, model, 0)
-        GLES20.glUniform1f(uCurvatureLoc, curvature)
-        GLES20.glUniform1f(uEmissiveLoc, emissive)
+        if (uModelMatrixLoc >= 0) GLES20.glUniformMatrix4fv(uModelMatrixLoc, 1, false, model, 0)
+        if (uCurvatureLoc >= 0) GLES20.glUniform1f(uCurvatureLoc, curvature)
+        if (uEmissiveLoc >= 0) GLES20.glUniform1f(uEmissiveLoc, emissive)
 
-        if (colorOverride != null && colorOverride.isNotEmpty()) {
-            val r = colorOverride[0]
-            val g = if (colorOverride.size > 1) colorOverride[1] else 1f
-            val b = if (colorOverride.size > 2) colorOverride[2] else 1f
-            val a = if (colorOverride.size > 3) colorOverride[3] else 1f
-            GLES20.glUniform4f(uColorOverrideLoc, r, g, b, a)
-        } else {
-            GLES20.glUniform4f(uColorOverrideLoc, 0f, 0f, 0f, 0f)
+        if (uColorOverrideLoc >= 0) {
+            if (colorOverride != null && colorOverride.isNotEmpty()) {
+                val r = colorOverride[0]
+                val g = if (colorOverride.size > 1) colorOverride[1] else 1f
+                val b = if (colorOverride.size > 2) colorOverride[2] else 1f
+                val a = if (colorOverride.size > 3) colorOverride[3] else 1f
+                GLES20.glUniform4f(uColorOverrideLoc, r, g, b, a)
+            } else {
+                GLES20.glUniform4f(uColorOverrideLoc, 0f, 0f, 0f, 0f)
+            }
         }
 
         mesh.vertexBuffer.position(0)
         GLES20.glVertexAttribPointer(aPositionLoc, Primitives.POSITION_COMPONENT_COUNT, GLES20.GL_FLOAT, false, Primitives.STRIDE, mesh.vertexBuffer)
         GLES20.glEnableVertexAttribArray(aPositionLoc)
 
-        mesh.vertexBuffer.position(Primitives.POSITION_COMPONENT_COUNT)
-        GLES20.glVertexAttribPointer(aNormalLoc, Primitives.NORMAL_COMPONENT_COUNT, GLES20.GL_FLOAT, false, Primitives.STRIDE, mesh.vertexBuffer)
-        GLES20.glEnableVertexAttribArray(aNormalLoc)
+        if (aNormalLoc >= 0) {
+            mesh.vertexBuffer.position(Primitives.POSITION_COMPONENT_COUNT)
+            GLES20.glVertexAttribPointer(aNormalLoc, Primitives.NORMAL_COMPONENT_COUNT, GLES20.GL_FLOAT, false, Primitives.STRIDE, mesh.vertexBuffer)
+            GLES20.glEnableVertexAttribArray(aNormalLoc)
+        }
 
-        mesh.vertexBuffer.position(Primitives.POSITION_COMPONENT_COUNT + Primitives.NORMAL_COMPONENT_COUNT)
-        GLES20.glVertexAttribPointer(aColorLoc, Primitives.COLOR_COMPONENT_COUNT, GLES20.GL_FLOAT, false, Primitives.STRIDE, mesh.vertexBuffer)
-        GLES20.glEnableVertexAttribArray(aColorLoc)
+        if (aColorLoc >= 0) {
+            mesh.vertexBuffer.position(Primitives.POSITION_COMPONENT_COUNT + Primitives.NORMAL_COMPONENT_COUNT)
+            GLES20.glVertexAttribPointer(aColorLoc, Primitives.COLOR_COMPONENT_COUNT, GLES20.GL_FLOAT, false, Primitives.STRIDE, mesh.vertexBuffer)
+            GLES20.glEnableVertexAttribArray(aColorLoc)
+        }
 
         mesh.indexBuffer.position(0)
         GLES20.glDrawElements(GLES20.GL_TRIANGLES, mesh.indexCount, GLES20.GL_UNSIGNED_SHORT, mesh.indexBuffer)
@@ -1079,14 +1114,6 @@ class GameRenderer(val physics: GamePhysicsEngine) : GLSurfaceView.Renderer {
                     matrixStack.scale(0.10f, 0.10f, 0.05f)
                     drawMesh(cubeMesh, p.neonGlowColor, emissive = 1.0f)
                     matrixStack.pop()
-
-                    if (p.isBoosting) {
-                        matrixStack.push()
-                        matrixStack.translate(ox, oy, p.torsoDepth / 2f + 0.44f)
-                        matrixStack.scale(0.09f, 0.09f, 0.38f)
-                        drawMesh(cubeMesh, floatArrayOf(1.0f, 0.6f, 0.0f, 1f), emissive = 1.0f)
-                        matrixStack.pop()
-                    }
                 }
             }
             CharacterModelId.VALKYRIE -> {
@@ -1138,14 +1165,6 @@ class GameRenderer(val physics: GamePhysicsEngine) : GLSurfaceView.Renderer {
                     matrixStack.scale(0.06f, 0.06f, 0.03f)
                     drawMesh(cubeMesh, p.neonGlowColor, emissive = 1.0f)
                     matrixStack.pop()
-
-                    if (p.isBoosting) {
-                        matrixStack.push()
-                        matrixStack.translate(ox, -0.10f, p.torsoDepth / 2f + 0.45f)
-                        matrixStack.scale(0.08f, 0.08f, 0.45f)
-                        drawMesh(cubeMesh, floatArrayOf(0.2f, 1.0f, 0.5f, 1f), emissive = 1.0f)
-                        matrixStack.pop()
-                    }
                 }
             }
             CharacterModelId.PHANTOM -> {
@@ -1229,20 +1248,6 @@ class GameRenderer(val physics: GamePhysicsEngine) : GLSurfaceView.Renderer {
                 matrixStack.scale(0.08f, 0.08f, 0.05f)
                 drawMesh(cubeMesh, p.neonGlowColor, emissive = 1.0f)
                 matrixStack.pop()
-
-                if (p.isBoosting) {
-                    matrixStack.push()
-                    matrixStack.translate(-0.10f, -0.16f, p.torsoDepth / 2f + 0.35f)
-                    matrixStack.scale(0.09f, 0.09f, 0.35f)
-                    drawMesh(cubeMesh, floatArrayOf(0.0f, 0.95f, 1.0f, 1f), emissive = 1.0f)
-                    matrixStack.pop()
-
-                    matrixStack.push()
-                    matrixStack.translate(0.10f, -0.16f, p.torsoDepth / 2f + 0.35f)
-                    matrixStack.scale(0.09f, 0.09f, 0.35f)
-                    drawMesh(cubeMesh, floatArrayOf(0.0f, 0.95f, 1.0f, 1f), emissive = 1.0f)
-                    matrixStack.pop()
-                }
             }
         }
 
@@ -1665,54 +1670,6 @@ class GameRenderer(val physics: GamePhysicsEngine) : GLSurfaceView.Renderer {
         matrixStack.pop() // End Right Forearm
         matrixStack.pop() // End Right Arm
 
-        // 6. Active Energy Shield Barrier Forcefield Dome
-        if (p.isShieldActive) {
-            GLES20.glEnable(GLES20.GL_BLEND)
-            GLES20.glBlendFunc(GLES20.GL_SRC_ALPHA, GLES20.GL_ONE_MINUS_SRC_ALPHA)
-            GLES20.glDepthMask(false)
-
-            val pulse = 1.0f + sin(totalTime * 8f) * 0.05f
-            val shieldCenterY = legBaseY + p.torsoHeight / 2f
-            matrixStack.push()
-            matrixStack.translate(0f, shieldCenterY, 0f)
-            matrixStack.scale(1.20f * pulse, 1.45f * pulse, 1.20f * pulse)
-            val shieldGlow = 0.70f + sin(totalTime * 9f) * 0.25f
-            drawMesh(smoothSphereMesh, floatArrayOf(0.0f, 0.95f, 1.0f, 0.35f), emissive = shieldGlow)
-
-            // Orbiting equatorial energy shield ring
-            matrixStack.push()
-            matrixStack.rotate(totalTime * 120f, 0f, 1f, 0.35f)
-            matrixStack.scale(1.15f, 1.15f, 1.15f)
-            drawMesh(torusRingMesh, floatArrayOf(0.3f, 1.0f, 1.0f, 0.75f), emissive = 1.0f)
-            matrixStack.pop()
-
-            matrixStack.pop()
-
-            GLES20.glDepthMask(true)
-            GLES20.glDisable(GLES20.GL_BLEND)
-        } else if (p.invincibleGraceTimer > 0f) {
-            // Invulnerability Grace Period Flash Effect (post-shield hit)
-            val flash = (totalTime * 24f).toInt() % 2 == 0
-            if (flash) {
-                val shieldCenterY = legBaseY + p.torsoHeight / 2f
-                matrixStack.push()
-                matrixStack.translate(0f, shieldCenterY, 0f)
-                matrixStack.scale(1.10f, 1.35f, 1.10f)
-                drawMesh(torusRingMesh, floatArrayOf(1.0f, 1.0f, 1.0f, 0.9f), emissive = 1.0f)
-                matrixStack.pop()
-            }
-        }
-
-        // 7. Active 2X Score Multiplier Golden Aura
-        if (p.isScoreBoosted) {
-            matrixStack.push()
-            matrixStack.translate(0f, legBaseY + 0.1f, 0f)
-            matrixStack.rotate(totalTime * 80f, 0f, 1f, 0f)
-            matrixStack.scale(0.85f, 0.85f, 0.85f)
-            drawMesh(torusRingMesh, floatArrayOf(1.0f, 0.85f, 0.15f, 0.80f), emissive = 1.0f)
-            matrixStack.pop()
-        }
-
         matrixStack.pop() // End Player
     }
 
@@ -1739,13 +1696,14 @@ class GameRenderer(val physics: GamePhysicsEngine) : GLSurfaceView.Renderer {
 
             when (pt.particleType) {
                 ParticleType.DUST_CLOUD -> {
-                    // Soft semi-transparent billowing smoke / dust sphere
-                    // Dynamic scale taper over particle lifetime so it gently dissolves without blocking visibility
+                    // Soft semi-transparent billowing road dust sphere
+                    // Scaled as a ground-flattened cloud (Y is 32% of X/Z) so it hugs the asphalt
+                    // and NEVER rises into the line of sight of incoming balls behind it
                     val lifeProgress = (pt.lifetime / pt.maxLife).coerceIn(0f, 1f)
-                    val scaleFactor = pt.size * (0.55f + 0.45f * lifeProgress)
+                    val scaleFactor = pt.size * (0.80f + 0.35f * (1f - lifeProgress))
                     matrixStack.rotate(pt.rotation, 0f, 1f, 0f)
-                    matrixStack.scale(scaleFactor, scaleFactor * 0.65f, scaleFactor)
-                    drawMesh(smoothSphereMesh, pt.color, emissive = 0.02f)
+                    matrixStack.scale(scaleFactor, scaleFactor * 0.32f, scaleFactor)
+                    drawMesh(smoothSphereMesh, pt.color, emissive = 0.05f)
                 }
                 ParticleType.ROCK_DEBRIS -> {
                     // Tumbling geometric gravel / concrete fragment

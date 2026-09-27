@@ -245,4 +245,56 @@ class ExampleUnitTest {
         assertTrue("Star field should contain triangles", starField.indexCount > 0)
         assertEquals(50 * 6, starField.indexCount) // 50 diamonds * 2 triangles * 3 indices
     }
+
+    @Test
+    fun allPrimitivesMeshes_createSuccessfullyWithoutExceptions() {
+        val physics = GamePhysicsEngine(GameAudio()) { _, _, _, _, _ -> }
+        physics.startNewGame()
+
+        val cubeMesh = com.example.engine.Primitives.createCube(1f, 1f, 1f, floatArrayOf(1f, 1f, 1f, 1f))
+        val roadQuadMesh = com.example.engine.Primitives.createPlane(physics.roadWidth, physics.segmentLength, floatArrayOf(0.12f, 0.14f, 0.18f, 1f))
+        val grassQuadMesh = com.example.engine.Primitives.createPlane(45f, physics.segmentLength, floatArrayOf(0.08f, 0.22f, 0.14f, 1f))
+        val cylinderMesh = com.example.engine.Primitives.createCylinder(0.35f, 2.0f, 14, floatArrayOf(0.38f, 0.24f, 0.15f, 1f))
+        val smoothSphereMesh = com.example.engine.Primitives.createSmoothSphere(1f, 16, 20, floatArrayOf(1f, 1f, 1f, 1f))
+        val torusRingMesh = com.example.engine.Primitives.createTorusRing(1.6f, 0.12f, 22, 10, floatArrayOf(0f, 0.95f, 1f, 1f))
+        val skyBackdropMesh = com.example.engine.Primitives.createSkyBackdrop(110f, 50f, 24)
+        val starFieldMesh = com.example.engine.Primitives.createStarField(120, 95f)
+        val speedPadMesh = com.example.engine.Primitives.createSpeedPad(3.0f, 4.2f)
+        val crystalMesh = com.example.engine.Primitives.createFloatingCrystal(1.4f, 3.2f)
+        val pyramidMesh = com.example.engine.Primitives.createSciFiPyramid(16f, 22f)
+        val wingBladeMesh = com.example.engine.Primitives.createWingBlade(
+            span = 0.90f,
+            rootChord = 0.38f,
+            tipChord = 0.12f,
+            sweep = 0.24f,
+            thickness = 0.035f,
+            color = floatArrayOf(0.05f, 0.85f, 0.42f, 1f)
+        )
+        val wedgeMesh = com.example.engine.Primitives.createWedge(
+            w = 0.25f,
+            h = 0.45f,
+            d = 0.35f,
+            color = floatArrayOf(1f, 1f, 1f, 1f)
+        )
+        val straightBallMesh = com.example.engine.Primitives.createRollingSphere(
+            radius = BallType.STRAIGHT.radius,
+            colorA = floatArrayOf(0.96f, 0.38f, 0.10f, 1f),
+            colorB = floatArrayOf(1.0f, 0.88f, 0.18f, 1f)
+        )
+
+        assertNotNull(cubeMesh)
+        assertNotNull(roadQuadMesh)
+        assertNotNull(grassQuadMesh)
+        assertNotNull(cylinderMesh)
+        assertNotNull(smoothSphereMesh)
+        assertNotNull(torusRingMesh)
+        assertNotNull(skyBackdropMesh)
+        assertNotNull(starFieldMesh)
+        assertNotNull(speedPadMesh)
+        assertNotNull(crystalMesh)
+        assertNotNull(pyramidMesh)
+        assertNotNull(wingBladeMesh)
+        assertNotNull(wedgeMesh)
+        assertNotNull(straightBallMesh)
+    }
 }

@@ -33,9 +33,8 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             MyApplicationTheme(darkTheme = true) {
-                Surface(
-                    modifier = Modifier.fillMaxSize(),
-                    color = MaterialTheme.colorScheme.background
+                Box(
+                    modifier = Modifier.fillMaxSize()
                 ) {
                     RollRunnerApp(viewModel)
                 }
