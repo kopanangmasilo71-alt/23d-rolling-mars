@@ -472,4 +472,323 @@ object Primitives {
             indices.size
         )
     }
+
+    /**
+     * Creates a glowing sci-fi speed boost pad with chevron directional marks.
+     */
+    fun createSpeedPad(width: Float = 2.4f, length: Float = 4.0f): Mesh {
+        val vertices = ArrayList<Float>()
+        val indices = ArrayList<Short>()
+        val hw = width / 2f
+        val hl = length / 2f
+
+        val padColor = floatArrayOf(0.0f, 0.95f, 1.0f, 1.0f)
+        val edgeColor = floatArrayOf(0.1f, 0.3f, 0.8f, 1.0f)
+
+        // Flat ground quad with slight border
+        val pts = listOf(
+            floatArrayOf(-hw, 0.03f, hl),
+            floatArrayOf(hw, 0.03f, hl),
+            floatArrayOf(hw, 0.03f, -hl),
+            floatArrayOf(-hw, 0.03f, -hl)
+        )
+        for (p in pts) {
+            vertices.add(p[0]); vertices.add(p[1]); vertices.add(p[2])
+            vertices.add(0f); vertices.add(1f); vertices.add(0f)
+            vertices.add(padColor[0]); vertices.add(padColor[1]); vertices.add(padColor[2]); vertices.add(1f)
+        }
+        indices.add(0); indices.add(1); indices.add(2)
+        indices.add(0); indices.add(2); indices.add(3)
+
+        return Mesh(
+            createFloatBuffer(vertices.toFloatArray()),
+            createShortBuffer(indices.toShortArray()),
+            indices.size
+        )
+    }
+
+    /**
+     * Creates an animated floating sci-fi crystal monolith (octahedron).
+     */
+    fun createFloatingCrystal(radius: Float = 1.2f, height: Float = 3.0f): Mesh {
+        val vertices = ArrayList<Float>()
+        val indices = ArrayList<Short>()
+
+        val topY = height / 2f
+        val botY = -height / 2f
+        val ringPts = listOf(
+            floatArrayOf(radius, 0f, 0f),
+            floatArrayOf(0f, 0f, radius),
+            floatArrayOf(-radius, 0f, 0f),
+            floatArrayOf(0f, 0f, -radius)
+        )
+
+        val crystalColor = floatArrayOf(0.4f, 0.85f, 1.0f, 1f)
+        val coreColor = floatArrayOf(0.85f, 0.3f, 1.0f, 1f)
+
+        fun addTri(p1: FloatArray, p2: FloatArray, p3: FloatArray, col: FloatArray) {
+            val base = (vertices.size / TOTAL_COMPONENT_COUNT).toShort()
+            val uX = p2[0] - p1[0]; val uY = p2[1] - p1[1]; val uZ = p2[2] - p1[2]
+            val vX = p3[0] - p1[0]; val vY = p3[1] - p1[1]; val vZ = p3[2] - p1[2]
+            var nX = uY * vZ - uZ * vY
+            var nY = uZ * vX - uX * vZ
+            var nZ = uX * vY - uY * vX
+            val len = kotlin.math.sqrt(nX * nX + nY * nY + nZ * nZ).coerceAtLeast(0.0001f)
+            nX /= len; nY /= len; nZ /= len
+
+            for (p in listOf(p1, p2, p3)) {
+                vertices.add(p[0]); vertices.add(p[1]); vertices.add(p[2])
+                vertices.add(nX); vertices.add(nY); vertices.add(nZ)
+                vertices.add(col[0]); vertices.add(col[1]); vertices.add(col[2]); vertices.add(col[3])
+            }
+            indices.add(base); indices.add((base + 1).toShort()); indices.add((base + 2).toShort())
+        }
+
+        val top = floatArrayOf(0f, topY, 0f)
+        val bot = floatArrayOf(0f, botY, 0f)
+
+        for (i in 0 until 4) {
+            val pA = ringPts[i]
+            val pB = ringPts[(i + 1) % 4]
+            addTri(top, pA, pB, crystalColor)
+            addTri(pB, pA, bot, coreColor)
+        }
+
+        return Mesh(
+            createFloatBuffer(vertices.toFloatArray()),
+            createShortBuffer(indices.toShortArray()),
+            indices.size
+        )
+    }
+
+    /**
+     * Creates a monumental futuristic pyramid for deep scenery.
+     */
+    fun createSciFiPyramid(baseSize: Float = 14f, height: Float = 18f): Mesh {
+        val vertices = ArrayList<Float>()
+        val indices = ArrayList<Short>()
+        val h = baseSize / 2f
+
+        val apex = floatArrayOf(0f, height, 0f)
+        val c1 = floatArrayOf(-h, 0f, -h)
+        val c2 = floatArrayOf(h, 0f, -h)
+        val c3 = floatArrayOf(h, 0f, h)
+        val c4 = floatArrayOf(-h, 0f, h)
+
+        val pyrColor = floatArrayOf(0.18f, 0.20f, 0.32f, 1f)
+
+        fun addTri(p1: FloatArray, p2: FloatArray, p3: FloatArray) {
+            val base = (vertices.size / TOTAL_COMPONENT_COUNT).toShort()
+            val uX = p2[0] - p1[0]; val uY = p2[1] - p1[1]; val uZ = p2[2] - p1[2]
+            val vX = p3[0] - p1[0]; val vY = p3[1] - p1[1]; val vZ = p3[2] - p1[2]
+            var nX = uY * vZ - uZ * vY; var nY = uZ * vX - uX * vZ; var nZ = uX * vY - uY * vX
+            val len = kotlin.math.sqrt(nX * nX + nY * nY + nZ * nZ).coerceAtLeast(0.0001f)
+            nX /= len; nY /= len; nZ /= len
+            for (p in listOf(p1, p2, p3)) {
+                vertices.add(p[0]); vertices.add(p[1]); vertices.add(p[2])
+                vertices.add(nX); vertices.add(nY); vertices.add(nZ)
+                vertices.add(pyrColor[0]); vertices.add(pyrColor[1]); vertices.add(pyrColor[2]); vertices.add(1f)
+            }
+            indices.add(base); indices.add((base + 1).toShort()); indices.add((base + 2).toShort())
+        }
+
+        addTri(apex, c1, c2)
+        addTri(apex, c2, c3)
+        addTri(apex, c3, c4)
+        addTri(apex, c4, c1)
+
+        return Mesh(
+            createFloatBuffer(vertices.toFloatArray()),
+            createShortBuffer(indices.toShortArray()),
+            indices.size
+        )
+    }
+
+    /**
+     * Aerodynamic swept wing blade for Valkyrie flight frame and aerodynamic spoilers.
+     */
+    fun createWingBlade(
+        span: Float = 0.85f,
+        rootChord: Float = 0.38f,
+        tipChord: Float = 0.14f,
+        sweep: Float = 0.22f,
+        thickness: Float = 0.035f,
+        color: FloatArray = floatArrayOf(0.05f, 0.85f, 0.45f, 1f)
+    ): Mesh {
+        val vertices = ArrayList<Float>()
+        val indices = ArrayList<Short>()
+        val ht = thickness / 2f
+
+        val rleTop = floatArrayOf(0f, ht, -rootChord / 2f)
+        val rteTop = floatArrayOf(0f, ht, rootChord / 2f)
+        val rleBot = floatArrayOf(0f, -ht, -rootChord / 2f)
+        val rteBot = floatArrayOf(0f, -ht, rootChord / 2f)
+
+        val tleTop = floatArrayOf(span, ht * 0.6f, -tipChord / 2f + sweep)
+        val tteTop = floatArrayOf(span, ht * 0.6f, tipChord / 2f + sweep)
+        val tleBot = floatArrayOf(span, -ht * 0.6f, -tipChord / 2f + sweep)
+        val tteBot = floatArrayOf(span, -ht * 0.6f, tipChord / 2f + sweep)
+
+        fun addQuad(p1: FloatArray, p2: FloatArray, p3: FloatArray, p4: FloatArray, norm: FloatArray, col: FloatArray) {
+            val base = (vertices.size / TOTAL_COMPONENT_COUNT).toShort()
+            for (p in listOf(p1, p2, p3, p4)) {
+                vertices.add(p[0]); vertices.add(p[1]); vertices.add(p[2])
+                vertices.add(norm[0]); vertices.add(norm[1]); vertices.add(norm[2])
+                vertices.add(col[0]); vertices.add(col[1]); vertices.add(col[2]); vertices.add(col[3])
+            }
+            indices.add(base); indices.add((base + 1).toShort()); indices.add((base + 2).toShort())
+            indices.add(base); indices.add((base + 2).toShort()); indices.add((base + 3).toShort())
+        }
+
+        // Top surface
+        addQuad(rleTop, tleTop, tteTop, rteTop, floatArrayOf(0f, 1f, 0f), color)
+        // Bottom surface
+        addQuad(rleBot, rteBot, tteBot, tleBot, floatArrayOf(0f, -1f, 0f), floatArrayOf(color[0] * 0.8f, color[1] * 0.8f, color[2] * 0.8f, color[3]))
+        // Leading edge
+        addQuad(rleBot, tleBot, tleTop, rleTop, floatArrayOf(0f, 0f, -1f), floatArrayOf(color[0] * 1.1f.coerceAtMost(1f), color[1] * 1.1f.coerceAtMost(1f), color[2] * 1.1f.coerceAtMost(1f), color[3]))
+        // Trailing edge
+        addQuad(rteTop, tteTop, tteBot, rteBot, floatArrayOf(0f, 0f, 1f), floatArrayOf(color[0] * 0.9f, color[1] * 0.9f, color[2] * 0.9f, color[3]))
+        // Tip cap
+        addQuad(tleTop, tleBot, tteBot, tteTop, floatArrayOf(1f, 0f, 0f), color)
+
+        return Mesh(
+            createFloatBuffer(vertices.toFloatArray()),
+            createShortBuffer(indices.toShortArray()),
+            indices.size
+        )
+    }
+
+    /**
+     * Angular wedge / ramp for cowl horns, sharp pauldrons, and kinetic scabbards.
+     */
+    fun createWedge(
+        w: Float = 0.25f,
+        h: Float = 0.45f,
+        d: Float = 0.35f,
+        color: FloatArray = floatArrayOf(1f, 1f, 1f, 1f)
+    ): Mesh {
+        val hw = w / 2f
+        val vertices = ArrayList<Float>()
+        val indices = ArrayList<Short>()
+
+        fun addTri(p1: FloatArray, p2: FloatArray, p3: FloatArray, norm: FloatArray, col: FloatArray) {
+            val base = (vertices.size / TOTAL_COMPONENT_COUNT).toShort()
+            for (p in listOf(p1, p2, p3)) {
+                vertices.add(p[0]); vertices.add(p[1]); vertices.add(p[2])
+                vertices.add(norm[0]); vertices.add(norm[1]); vertices.add(norm[2])
+                vertices.add(col[0]); vertices.add(col[1]); vertices.add(col[2]); vertices.add(col[3])
+            }
+            indices.add(base); indices.add((base + 1).toShort()); indices.add((base + 2).toShort())
+        }
+
+        fun addQuad(p1: FloatArray, p2: FloatArray, p3: FloatArray, p4: FloatArray, norm: FloatArray, col: FloatArray) {
+            val base = (vertices.size / TOTAL_COMPONENT_COUNT).toShort()
+            for (p in listOf(p1, p2, p3, p4)) {
+                vertices.add(p[0]); vertices.add(p[1]); vertices.add(p[2])
+                vertices.add(norm[0]); vertices.add(norm[1]); vertices.add(norm[2])
+                vertices.add(col[0]); vertices.add(col[1]); vertices.add(col[2]); vertices.add(col[3])
+            }
+            indices.add(base); indices.add((base + 1).toShort()); indices.add((base + 2).toShort())
+            indices.add(base); indices.add((base + 2).toShort()); indices.add((base + 3).toShort())
+        }
+
+        val bFl = floatArrayOf(-hw, 0f, -d / 2f)
+        val bFr = floatArrayOf(hw, 0f, -d / 2f)
+        val bBl = floatArrayOf(-hw, 0f, d / 2f)
+        val bBr = floatArrayOf(hw, 0f, d / 2f)
+
+        val tL = floatArrayOf(-hw, h, -d / 2f)
+        val tR = floatArrayOf(hw, h, -d / 2f)
+
+        // Bottom
+        addQuad(bFl, bFr, bBr, bBl, floatArrayOf(0f, -1f, 0f), floatArrayOf(color[0] * 0.7f, color[1] * 0.7f, color[2] * 0.7f, color[3]))
+        // Back vertical face
+        addQuad(bFr, bFl, tL, tR, floatArrayOf(0f, 0f, -1f), floatArrayOf(color[0] * 0.85f, color[1] * 0.85f, color[2] * 0.85f, color[3]))
+        // Slanted top-front ramp face
+        addQuad(tL, bBl, bBr, tR, floatArrayOf(0f, 0.707f, 0.707f), color)
+        // Left triangle
+        addTri(bFl, bBl, tL, floatArrayOf(-1f, 0f, 0f), floatArrayOf(color[0] * 0.9f, color[1] * 0.9f, color[2] * 0.9f, color[3]))
+        // Right triangle
+        addTri(bFr, tR, bBr, floatArrayOf(1f, 0f, 0f), floatArrayOf(color[0] * 0.95f, color[1] * 0.95f, color[2] * 0.95f, color[3]))
+
+        return Mesh(
+            createFloatBuffer(vertices.toFloatArray()),
+            createShortBuffer(indices.toShortArray()),
+            indices.size
+        )
+    }
+
+    /**
+     * Celestial starfield of twinkling 3D star diamonds scattered across the upper sky dome.
+     */
+    fun createStarField(
+        count: Int = 120,
+        radius: Float = 95f
+    ): Mesh {
+        val vertices = ArrayList<Float>()
+        val indices = ArrayList<Short>()
+
+        // Use a deterministic seed so star positions are consistent and artistic
+        val rng = kotlin.random.Random(42)
+
+        for (i in 0 until count) {
+            // Upper dome: azimuth 0..PI (facing forward/up), elevation 0.20*PI .. 0.85*PI
+            val phi = (rng.nextFloat() * 1.3f - 0.15f) * PI.toFloat() // Spread across forward view
+            val theta = (0.22f + rng.nextFloat() * 0.58f) * (PI.toFloat() / 2f) // Elevation above horizon
+
+            val r = radius * (0.95f + rng.nextFloat() * 0.08f)
+            val cx = cos(phi) * cos(theta) * r
+            val cy = sin(theta) * r + 2f // Lift slightly above road horizon
+            val cz = sin(phi) * cos(theta) * r
+
+            val starSize = 0.55f + rng.nextFloat() * 0.75f
+            val colorRoll = rng.nextFloat()
+            val starColor = when {
+                colorRoll < 0.45f -> floatArrayOf(1.0f, 1.0f, 1.0f, 1.0f) // Pure white
+                colorRoll < 0.70f -> floatArrayOf(0.70f, 0.90f, 1.0f, 1.0f) // Cyan blue
+                colorRoll < 0.88f -> floatArrayOf(1.0f, 0.88f, 0.65f, 1.0f) // Warm golden
+                else -> floatArrayOf(0.92f, 0.70f, 1.0f, 1.0f) // Soft violet
+            }
+
+            // Normal pointing back to center
+            val invLen = 1f / sqrt(cx * cx + cy * cy + cz * cz)
+            val nx = -cx * invLen
+            val ny = -cy * invLen
+            val nz = -cz * invLen
+
+            // Create an inward-facing diamond (4 vertices, 2 triangles)
+            val base = (vertices.size / TOTAL_COMPONENT_COUNT).toShort()
+
+            // Diamond vertices: Top, Right, Bottom, Left
+            val pts = listOf(
+                floatArrayOf(cx, cy + starSize, cz),
+                floatArrayOf(cx + starSize * 0.7f, cy, cz),
+                floatArrayOf(cx, cy - starSize, cz),
+                floatArrayOf(cx - starSize * 0.7f, cy, cz)
+            )
+
+            for (p in pts) {
+                vertices.add(p[0]); vertices.add(p[1]); vertices.add(p[2])
+                vertices.add(nx); vertices.add(ny); vertices.add(nz)
+                vertices.add(starColor[0]); vertices.add(starColor[1]); vertices.add(starColor[2]); vertices.add(starColor[3])
+            }
+
+            indices.add(base)
+            indices.add((base + 1).toShort())
+            indices.add((base + 2).toShort())
+
+            indices.add(base)
+            indices.add((base + 2).toShort())
+            indices.add((base + 3).toShort())
+        }
+
+        return Mesh(
+            createFloatBuffer(vertices.toFloatArray()),
+            createShortBuffer(indices.toShortArray()),
+            indices.size
+        )
+    }
+
+    private fun sqrt(v: Float): Float = kotlin.math.sqrt(v.toDouble()).toFloat()
 }
+

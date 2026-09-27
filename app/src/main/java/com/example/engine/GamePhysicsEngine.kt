@@ -1,46 +1,108 @@
 package com.example.engine
 
+import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.random.Random
 
 class GamePhysicsEngine(
     val audio: GameAudio,
-    val onGameOver: (score: Int, distanceMeters: Int, ballsDodged: Int) -> Unit
+    val onGameOver: (score: Int, distanceMeters: Int, ballsDodged: Int, maxCombo: Int, sectorName: String) -> Unit
 ) {
     val roadWidth = 12.0f
     val roadHalfWidth = roadWidth / 2f
 
     val player = PlayerCharacter()
     val ballPool = Array(32) { RollingBall(it) }
+    val speedPadPool = Array(6) { SpeedPad(it) }
+    val collectiblePool = Array(12) { CollectibleItem(it) }
 
-    // Road segments: 8 segments of 30 meters = 240m road view
+    // Road segments: 10 segments of 30 meters = 300m road view
+    // Start from +60m so the road extends well behind the camera (cam at z=7m)
     val segmentLength = 30f
-    val numSegments = 8
+    val numSegments = 10
     val roadSegments = Array(numSegments) { i ->
-        RoadSegment(i, -i * segmentLength, segmentLength)
+        RoadSegment(i, 60f - i * segmentLength, segmentLength)
     }
 
-    // Roadside scenery objects (pine trees, round trees, rocks)
+    // Roadside scenery objects (pine trees, cyber light towers, rock monoliths, floating crystals, sci-fi pyramids)
     val scenery = ArrayList<SceneryItem>()
 
-    val particles = ParticleSystem(100)
+    val particles = ParticleSystem(180)
 
     // Camera
     val cameraPos = Vector3(0f, 4.2f, 7.0f)
     val cameraLookAt = Vector3(0f, 1.2f, -14f)
+    var cameraShakeMagnitude: Float = 0f
 
     // Gameplay state
     var isRunning: Boolean = false
     var isGameOver: Boolean = false
+    var isOverdriveMode: Boolean = false
     var distanceTraveled: Float = 0f
     var ballsDodged: Int = 0
+    var nearMissCount: Int = 0
     var score: Int = 0
+
+    // Combo system
+    var comboMultiplier: Int = 1
+    var comboTimer: Float = 0f
+    var maxComboThisRun: Int = 1
+    val maxComboTimer: Float = 3.6f
+
+    // Sector Progression System
+    val sectors = listOf(
+        SectorInfo(
+            1, "SECTOR 1", "OUTPOST DAWN", 0f, 1.0f,
+            floatArrayOf(0.06f, 0.08f, 0.16f),
+            floatArrayOf(0.95f, 0.40f, 0.20f),
+            floatArrayOf(0.38f, 0.40f, 0.48f),
+            floatArrayOf(0.90f, 0.88f, 0.82f)
+        ),
+        SectorInfo(
+            2, "SECTOR 2", "NEON CANYON", 150f, 1.15f,
+            floatArrayOf(0.14f, 0.04f, 0.22f),
+            floatArrayOf(1.00f, 0.15f, 0.55f),
+            floatArrayOf(0.42f, 0.32f, 0.52f),
+            floatArrayOf(1.00f, 0.70f, 0.85f)
+        ),
+        SectorInfo(
+            3, "SECTOR 3", "HYPER GRID", 350f, 1.30f,
+            floatArrayOf(0.02f, 0.15f, 0.18f),
+            floatArrayOf(0.00f, 0.95f, 0.80f),
+            floatArrayOf(0.30f, 0.48f, 0.50f),
+            floatArrayOf(0.70f, 1.00f, 0.95f)
+        ),
+        SectorInfo(
+            4, "SECTOR 4", "MAGMA CORE", 650f, 1.45f,
+            floatArrayOf(0.18f, 0.05f, 0.03f),
+            floatArrayOf(1.00f, 0.35f, 0.05f),
+            floatArrayOf(0.50f, 0.32f, 0.30f),
+            floatArrayOf(1.00f, 0.65f, 0.40f)
+        ),
+        SectorInfo(
+            5, "SECTOR 5", "QUANTUM VOID", 1000f, 1.60f,
+            floatArrayOf(0.08f, 0.04f, 0.18f),
+            floatArrayOf(0.75f, 0.85f, 1.00f),
+            floatArrayOf(0.40f, 0.38f, 0.55f),
+            floatArrayOf(0.95f, 0.90f, 1.00f)
+        )
+    )
+
+    var currentSector: SectorInfo = sectors[0]
+    var onSectorChanged: ((SectorInfo) -> Unit)? = null
+    var onNearMissEvent: (() -> Unit)? = null
+    var onCollectibleCollected: ((CollectibleType) -> Unit)? = null
+    var onShieldDeflected: (() -> Unit)? = null
 
     // Spawning control
     private var spawnTimer: Float = 0f
-    private var nextSpawnInterval: Float = 2.2f
+    private var nextSpawnInterval: Float = 2.0f
+    private var speedPadTimer: Float = 0f
+    private var collectibleTimer: Float = 0f
     private var gameTime: Float = 0f
+    private var crashTimer: Float = 0f
+    private var footstepTimer: Float = 0f
 
     init {
         generateInitialScenery()
@@ -48,62 +110,107 @@ class GamePhysicsEngine(
 
     private fun generateInitialScenery() {
         scenery.clear()
-        // Distribute trees and rocks along the roadside
-        for (i in 0 until 40) {
-            val z = -i * 12f
-            // Left verge (x between -8f and -18f)
-            val leftX = -(Random.nextFloat() * 10f + 7.5f)
+        // Distribute diverse sci-fi scenery along the roadside safely outside the road
+        for (i in 0 until 48) {
+            val z = -20f - i * 12f // Start 20m ahead of player
+            val typeRoll = Random.nextFloat()
+            val sceneryType = when {
+                typeRoll < 0.28f -> 0 // Pine Tree
+                typeRoll < 0.52f -> 1 // Cyber Light Tower
+                typeRoll < 0.72f -> 2 // Rock Monolith Boulder
+                typeRoll < 0.88f -> 3 // Floating Sci-Fi Crystal
+                else -> 4 // Futuristic Pyramid
+            }
+
+            // Left verge - pyramids placed far away to prevent road overlap
+            val leftDist = if (sceneryType == 4) (24f + Random.nextFloat() * 16f) else (9.5f + Random.nextFloat() * 12f)
+            val leftScale = if (sceneryType == 4) 1.2f else (0.8f + Random.nextFloat() * 0.4f)
             scenery.add(
                 SceneryItem(
-                    x = leftX,
-                    z = z + Random.nextFloat() * 4f,
-                    type = Random.nextInt(3),
-                    scale = 0.8f + Random.nextFloat() * 0.6f,
+                    x = -leftDist,
+                    z = z + Random.nextFloat() * 6f,
+                    type = sceneryType,
+                    scale = leftScale,
                     rotationY = Random.nextFloat() * 360f
                 )
             )
-            // Right verge (x between 8f and 18f)
-            val rightX = Random.nextFloat() * 10f + 7.5f
+
+            // Right verge
+            val rightType = Random.nextInt(5)
+            val rightDist = if (rightType == 4) (24f + Random.nextFloat() * 16f) else (9.5f + Random.nextFloat() * 12f)
+            val rightScale = if (rightType == 4) 1.2f else (0.8f + Random.nextFloat() * 0.4f)
             scenery.add(
                 SceneryItem(
-                    x = rightX,
-                    z = z + Random.nextFloat() * 4f,
-                    type = Random.nextInt(3),
-                    scale = 0.8f + Random.nextFloat() * 0.6f,
+                    x = rightDist,
+                    z = z + Random.nextFloat() * 6f,
+                    type = rightType,
+                    scale = rightScale,
                     rotationY = Random.nextFloat() * 360f
                 )
             )
         }
     }
 
-    fun startNewGame(characterColor: String = "Classic Blue") {
+    fun startNewGame(characterColor: String = "Classic Blue", overdrive: Boolean = false) {
+        isOverdriveMode = overdrive
         player.reset()
         player.applyColorPreset(characterColor)
         for (b in ballPool) {
             b.isActive = false
         }
+        for (sp in speedPadPool) {
+            sp.isActive = false
+        }
+        for (col in collectiblePool) {
+            col.isActive = false
+        }
         for (i in 0 until numSegments) {
-            roadSegments[i].zStart = -i * segmentLength
+            roadSegments[i].zStart = 60f - i * segmentLength
         }
         generateInitialScenery()
 
         cameraPos.set(0f, 4.2f, 7.0f)
         cameraLookAt.set(0f, 1.2f, -14f)
+        cameraShakeMagnitude = 0f
 
         distanceTraveled = 0f
         ballsDodged = 0
+        nearMissCount = 0
         score = 0
+        comboMultiplier = 1
+        comboTimer = 0f
+        maxComboThisRun = 1
+        currentSector = sectors[0]
+
         gameTime = 0f
         spawnTimer = 0f
-        nextSpawnInterval = 2.2f
+        speedPadTimer = 0f
+        collectibleTimer = 0f
+        crashTimer = 0f
+        footstepTimer = 0f
+        nextSpawnInterval = if (isOverdriveMode) 1.4f else 2.0f
         isRunning = true
         isGameOver = false
+
+        // Spawn initial opening wave immediately so the player sees obstacles right away!
+        val initSpeed = if (isOverdriveMode) 8.5f else 6.5f
+        spawnBall(BallType.STRAIGHT, x = 0f, z = -30f, speed = initSpeed, lateralSpeed = 0f)
+        spawnBall(BallType.LEFT_TO_RIGHT, x = -(roadHalfWidth - 2.0f), z = -54f, speed = initSpeed * 1.05f, lateralSpeed = 2.2f)
+        spawnBall(BallType.STRAIGHT, x = 2.4f, z = -78f, speed = initSpeed * 1.1f, lateralSpeed = 0f)
+
+        // Spawn an initial Energy Shield collectible nearby so player discovers the power-up early!
+        spawnCollectibleAt(CollectibleType.SHIELD, x = -1.8f, z = -42f)
     }
 
     fun jump() {
         if (!isRunning || isGameOver) return
         if (player.jump()) {
             audio.playJump()
+            particles.emitShockwave(
+                Vector3(player.position.x, 0.05f, player.position.z),
+                16,
+                player.neonGlowColor
+            )
         }
     }
 
@@ -113,13 +220,26 @@ class GamePhysicsEngine(
         rightHeld: Boolean,
         brakeHeld: Boolean
     ) {
-        if (!isRunning || isGameOver) {
-            // Update particles even during game over
-            particles.update(dt)
+        val clampedDt = dt.coerceIn(0.001f, 0.05f)
+
+        // Game over tumbling physics
+        if (isGameOver) {
+            player.update(clampedDt, false, false, false, roadHalfWidth)
+            particles.update(clampedDt)
+            cameraShakeMagnitude = (cameraShakeMagnitude - clampedDt * 3.5f).coerceAtLeast(0f)
+            crashTimer += clampedDt
+            if (crashTimer >= 0.85f && isRunning) {
+                isRunning = false
+                onGameOver(score, distanceTraveled.toInt(), ballsDodged, maxComboThisRun, currentSector.name)
+            }
             return
         }
 
-        val clampedDt = dt.coerceIn(0.001f, 0.05f)
+        if (!isRunning) {
+            particles.update(clampedDt)
+            return
+        }
+
         gameTime += clampedDt
 
         // Sound cue for braking
@@ -127,19 +247,49 @@ class GamePhysicsEngine(
             audio.playBrake()
         }
 
-        // 1. Update Player
+        // 1. Update Sector progression
+        checkSectorProgression()
+
+        // 2. Update Combo Timer decay
+        if (comboTimer > 0f) {
+            comboTimer -= clampedDt
+            if (comboTimer <= 0f) {
+                comboMultiplier = 1
+            }
+        }
+
+        // 3. Update Player
         player.update(clampedDt, leftHeld, rightHeld, brakeHeld, roadHalfWidth)
 
-        // 2. Road scrolling & distance tracking
-        val forwardDelta = player.forwardSpeed * clampedDt
+        // Footstep dust generation while running on ground
+        if (player.isGrounded) {
+            footstepTimer += clampedDt * (player.forwardSpeed / player.baseNormalSpeed) * 12f
+            if (footstepTimer >= 3.14159f) {
+                footstepTimer -= 3.14159f
+                particles.emitDust(player.position, 3)
+            }
+        }
+
+        // Turbo speed streaks when boosting or sprinting in high sectors
+        if (player.isBoosting || player.forwardSpeed > 14.5f) {
+            particles.emitSpeedStreak(player.position, 2, player.neonGlowColor)
+        }
+
+        // 4. Road scrolling & distance tracking
+        val sectorSpeedMult = currentSector.speedMultiplier * (if (isOverdriveMode) 1.25f else 1.0f)
+        val forwardDelta = player.forwardSpeed * sectorSpeedMult * clampedDt
         distanceTraveled += forwardDelta
-        score = (distanceTraveled * 10f).toInt() + (ballsDodged * 60)
+
+        // Dynamic Score Accumulation (with 2X Multiplier power-up support)
+        val difficultyBonus = if (isOverdriveMode) 2 else 1
+        val multiplierBonus = if (player.isScoreBoosted) player.scoreMultiplierValue else 1
+        val distanceScoreGain = (forwardDelta * 12f * comboMultiplier * difficultyBonus * multiplierBonus).toInt()
+        score += distanceScoreGain
 
         // Recycle road segments
         for (seg in roadSegments) {
             seg.zStart += forwardDelta
-            if (seg.zStart > segmentLength) {
-                // Find minimum zStart to place behind
+            if (seg.zStart > 60f + segmentLength) {
                 var minZ = 0f
                 for (s in roadSegments) {
                     if (s.zStart < minZ) minZ = s.zStart
@@ -152,59 +302,261 @@ class GamePhysicsEngine(
         for (i in scenery.indices) {
             val item = scenery[i]
             val newZ = item.z + forwardDelta
-            if (newZ > 15f) {
-                val recycledZ = newZ - (40 * 12f)
-                val newX = if (item.x < 0) -(Random.nextFloat() * 10f + 7.5f) else (Random.nextFloat() * 10f + 7.5f)
-                scenery[i] = item.copy(x = newX, z = recycledZ, rotationY = Random.nextFloat() * 360f)
+            if (newZ > 30f) {
+                val recycledZ = newZ - (48 * 12f)
+                val isLeft = item.x < 0
+                val newType = Random.nextInt(5)
+                val dist = if (newType == 4) (24f + Random.nextFloat() * 16f) else (9.5f + Random.nextFloat() * 12f)
+                val newX = if (isLeft) -dist else dist
+                val scale = if (newType == 4) 1.2f else (0.8f + Random.nextFloat() * 0.4f)
+                scenery[i] = item.copy(x = newX, z = recycledZ, type = newType, scale = scale, rotationY = Random.nextFloat() * 360f)
             } else {
                 scenery[i] = item.copy(z = newZ)
             }
         }
 
-        // 3. Update Balls
-        for (ball in ballPool) {
-            if (ball.isActive) {
-                // The ball rolls forward relative to road plus player forward speed relative movement
-                ball.update(clampedDt)
-                // Add relative forward speed of road
-                ball.position.z += forwardDelta
+        // 5. Update Speed Pads
+        for (pad in speedPadPool) {
+            if (pad.isActive) {
+                pad.position.z += forwardDelta
+                pad.update(clampedDt)
 
-                // Check if ball passed player safely
-                if (!ball.hasDodged && ball.position.z > (player.position.z + 1.2f)) {
-                    ball.hasDodged = true
-                    ballsDodged++
-                    audio.playDodgeWhoosh()
+                // Check collision with player
+                if (abs(player.position.x - pad.position.x) < 1.6f &&
+                    abs(player.position.z - pad.position.z) < 1.8f &&
+                    player.position.y < 0.6f
+                ) {
+                    pad.isActive = false
+                    player.applySpeedBoost(3.0f)
+                    audio.playSpeedPad()
+                    score += 150 * comboMultiplier * difficultyBonus * multiplierBonus
+                    particles.emitShockwave(
+                        Vector3(pad.position.x, 0.05f, pad.position.z),
+                        24,
+                        floatArrayOf(0.0f, 0.95f, 1.0f)
+                    )
+                    cameraShakeMagnitude = 0.20f
                 }
 
-                // Deactivate when well behind camera
-                if (ball.position.z > 20f) {
-                    ball.isActive = false
-                }
-
-                // Collision Check
-                if (checkCollision(player, ball)) {
-                    triggerGameOver()
-                    return
+                if (pad.position.z > 20f) {
+                    pad.isActive = false
                 }
             }
         }
 
-        // 4. Procedural Ball Spawning
+        // Spawn Speed Pads in Sector 2+
+        if (currentSector.id >= 2) {
+            speedPadTimer += clampedDt
+            if (speedPadTimer >= (if (isOverdriveMode) 8f else 12f)) {
+                speedPadTimer = 0f
+                spawnSpeedPad()
+            }
+        }
+
+        // 5b. Update Collectible Power-Ups
+        for (col in collectiblePool) {
+            if (col.isActive) {
+                col.position.z += forwardDelta
+                col.update(clampedDt)
+
+                // Check pickup collision with player (radius ~0.65m, player torso ~0.6m)
+                val latDist = abs(player.position.x - col.position.x)
+                val longDist = abs(player.position.z - col.position.z)
+                val vertDist = abs(player.position.y + 0.6f - col.position.y)
+
+                if (latDist < 1.35f && longDist < 1.45f && vertDist < 1.5f) {
+                    col.isActive = false
+                    when (col.type) {
+                        CollectibleType.SHIELD -> {
+                            player.activateShield(14f)
+                            audio.playShieldPickup()
+                            particles.emitShockwave(
+                                Vector3(player.position.x, 0.1f, player.position.z),
+                                28,
+                                col.type.color
+                            )
+                        }
+                        CollectibleType.SPEED_BOOST -> {
+                            player.applySpeedBoost(6.0f)
+                            audio.playSpeedPad()
+                            particles.emitSpeedStreak(player.position, 6, col.type.color)
+                        }
+                        CollectibleType.SCORE_MULTIPLIER -> {
+                            player.activateScoreMultiplier(9.0f, 2)
+                            audio.playPowerUpPickup()
+                            particles.emitShockwave(
+                                Vector3(player.position.x, 0.1f, player.position.z),
+                                24,
+                                col.type.color
+                            )
+                        }
+                        CollectibleType.ENERGY_CELL -> {
+                            score += 150 * comboMultiplier * difficultyBonus * multiplierBonus
+                            comboTimer = maxComboTimer
+                            audio.playPowerUpPickup()
+                        }
+                    }
+
+                    particles.emitBurst(
+                        Vector3(col.position.x, col.position.y, col.position.z),
+                        14,
+                        col.type.color
+                    )
+                    cameraShakeMagnitude = (cameraShakeMagnitude + 0.12f).coerceAtMost(0.35f)
+                    onCollectibleCollected?.invoke(col.type)
+                }
+
+                if (col.position.z > 22f) {
+                    col.isActive = false
+                }
+            }
+        }
+
+        // Periodic Collectible Spawning (every 5-7 seconds)
+        collectibleTimer += clampedDt
+        val targetCollectibleInterval = if (isOverdriveMode) 5.5f else 6.8f
+        if (collectibleTimer >= targetCollectibleInterval) {
+            collectibleTimer = 0f
+            spawnRandomCollectible()
+        }
+
+        // 6. Update Rolling Boulders
+        for (ball in ballPool) {
+            if (ball.isActive) {
+                ball.update(clampedDt)
+                ball.position.z += forwardDelta
+
+                // 6a. Continuous Rolling Ground Dust & Debris Trail (spaced for clear forward visibility)
+                val isNearGround = ball.position.y <= (ball.radius + 0.15f)
+                if (isNearGround) {
+                    ball.trailDustTimer += clampedDt
+                    val dustInterval = if (ball.ballType == BallType.GIANT) 0.07f else 0.095f
+                    if (ball.trailDustTimer >= dustInterval) {
+                        ball.trailDustTimer = 0f
+                        particles.emitBoulderTrailDust(ball.position, ball.radius, ball.forwardVelocity, ball.colorA)
+                    }
+                }
+
+                // 6b. Bouncing Boulder Ground Impact Shockwaves & Dust Puffs
+                if (ball.ballType == BallType.BOUNCING) {
+                    val isGroundedNow = ball.position.y <= (ball.radius + 0.08f)
+                    if (isGroundedNow && ball.wasInAir) {
+                        particles.emitBoulderImpact(ball.position, ball.radius, ball.colorA)
+                        if (abs(ball.position.z - player.position.z) < 18f) {
+                            cameraShakeMagnitude = (cameraShakeMagnitude + 0.14f).coerceAtMost(0.65f)
+                        }
+                    }
+                    ball.wasInAir = !isGroundedNow
+                }
+
+                // 6c. Barrier / Curb Collision Detection (Concrete sparks, dust plumes & bounce)
+                if (ball.curbCooldownTimer > 0f) {
+                    ball.curbCooldownTimer -= clampedDt
+                }
+                val curbLeft = -roadHalfWidth + ball.radius
+                val curbRight = roadHalfWidth - ball.radius
+
+                if (ball.position.x <= curbLeft) {
+                    ball.position.x = curbLeft
+                    ball.horizontalVelocity = kotlin.math.abs(ball.horizontalVelocity) * 0.70f
+                    if (ball.curbCooldownTimer <= 0f) {
+                        ball.curbCooldownTimer = 0.20f
+                        particles.emitCurbCollision(ball.position, isLeftSide = true, ball.colorA)
+                        if (abs(ball.position.z - player.position.z) < 20f) {
+                            cameraShakeMagnitude = (cameraShakeMagnitude + 0.16f).coerceAtMost(0.65f)
+                        }
+                    }
+                } else if (ball.position.x >= curbRight) {
+                    ball.position.x = curbRight
+                    ball.horizontalVelocity = -kotlin.math.abs(ball.horizontalVelocity) * 0.70f
+                    if (ball.curbCooldownTimer <= 0f) {
+                        ball.curbCooldownTimer = 0.20f
+                        particles.emitCurbCollision(ball.position, isLeftSide = false, ball.colorA)
+                        if (abs(ball.position.z - player.position.z) < 20f) {
+                            cameraShakeMagnitude = (cameraShakeMagnitude + 0.16f).coerceAtMost(0.65f)
+                        }
+                    }
+                }
+
+                // Check Near Miss (Player brushes right past the boulder)
+                if (!ball.hasDodged && abs(ball.position.z - player.position.z) < 1.0f) {
+                    val latDist = abs(ball.position.x - player.position.x)
+                    val clearance = ball.radius + (player.torsoWidth / 2f)
+                    if (latDist > clearance && latDist < (clearance + 0.95f)) {
+                        // Near miss triggered!
+                        ball.hasDodged = true
+                        ballsDodged++
+                        nearMissCount++
+                        triggerNearMiss(ball)
+                    }
+                }
+
+                // Check Standard Safe Dodge
+                if (!ball.hasDodged && ball.position.z > (player.position.z + 1.3f)) {
+                    ball.hasDodged = true
+                    ballsDodged++
+                    onSuccessfulDodge()
+                }
+
+                // Deactivate when past camera
+                if (ball.position.z > 22f) {
+                    ball.isActive = false
+                }
+
+                // Collision Check with Shield and Invulnerability Defense
+                if (checkCollision(player, ball)) {
+                    if (player.isShieldActive) {
+                        // SHIELD ABSORBS IMPACT! Player deflects boulder and continues running!
+                        player.breakShield(gracePeriod = 1.6f)
+                        ball.isActive = false
+                        audio.playShieldDeflect()
+                        cameraShakeMagnitude = 0.65f
+                        val multBonus = if (player.isScoreBoosted) player.scoreMultiplierValue else 1
+                        val diffBonus = if (isOverdriveMode) 2 else 1
+                        score += 350 * comboMultiplier * diffBonus * multBonus
+                        ballsDodged++
+
+                        // Shimmering explosion of pulverized rock and shield energy
+                        particles.emitBoulderImpact(ball.position, ball.radius * 1.4f, floatArrayOf(0.0f, 0.95f, 1.0f, 1f))
+                        particles.emitShockwave(Vector3(player.position.x, 0.1f, player.position.z), 32, floatArrayOf(0f, 0.95f, 1f, 1f))
+                        particles.emitBurst(Vector3(player.position.x, player.position.y + 0.8f, player.position.z), 40, floatArrayOf(0f, 0.95f, 1f, 1f))
+
+                        onShieldDeflected?.invoke()
+                    } else if (player.invincibleGraceTimer > 0f) {
+                        // Invulnerability grace period: boulder harmlessly shatters
+                        ball.isActive = false
+                        particles.emitShockwave(Vector3(player.position.x, 0.1f, player.position.z), 16, floatArrayOf(0f, 0.95f, 1f, 1f))
+                    } else {
+                        triggerGameOver(ball)
+                        return
+                    }
+                }
+            }
+        }
+
+        // 7. Procedural Ball Spawning
         spawnTimer += clampedDt
         if (spawnTimer >= nextSpawnInterval) {
             spawnTimer = 0f
             spawnObstacleWave()
         }
 
-        // 5. Update Particles
+        // 8. Update Particles
         particles.update(clampedDt)
 
-        // 6. Camera Follow: Directly behind player so player is ALWAYS centered & visible
-        val targetCamX = player.position.x
-        val targetCamY = player.position.y * 0.40f + 3.1f + player.bodyBobOffset * 0.4f
-        val targetCamZ = player.position.z + 5.2f
+        // 9. Camera Shake Decay & Follow Camera
+        if (cameraShakeMagnitude > 0f) {
+            cameraShakeMagnitude = (cameraShakeMagnitude - clampedDt * 2.8f).coerceAtLeast(0f)
+        }
 
-        // High responsiveness in X so lateral dodges never leave the player behind or off-screen
+        val shakeX = (Random.nextFloat() - 0.5f) * cameraShakeMagnitude
+        val shakeY = (Random.nextFloat() - 0.5f) * cameraShakeMagnitude
+
+        val targetCamX = player.position.x + shakeX
+        val speedCamPullback = (player.forwardSpeed / player.baseNormalSpeed - 1f) * 1.5f
+        val targetCamY = player.position.y * 0.40f + 3.1f + player.bodyBobOffset * 0.4f + shakeY
+        val targetCamZ = player.position.z + 5.2f + speedCamPullback
+
         val xLerp = (28.0f * clampedDt).coerceAtMost(1f)
         val yzLerp = (12.0f * clampedDt).coerceAtMost(1f)
         cameraPos.x += (targetCamX - cameraPos.x) * xLerp
@@ -216,32 +568,147 @@ class GamePhysicsEngine(
         cameraLookAt.z = player.position.z - 22f
     }
 
+    private fun checkSectorProgression() {
+        var highestSector = sectors[0]
+        for (sec in sectors) {
+            if (distanceTraveled >= sec.minDistance) {
+                highestSector = sec
+            }
+        }
+
+        if (highestSector.id != currentSector.id) {
+            currentSector = highestSector
+            audio.playSectorAlert()
+            cameraShakeMagnitude = 0.45f
+            particles.emitShockwave(
+                Vector3(player.position.x, 1.2f, player.position.z),
+                32,
+                currentSector.fogHorizonColor
+            )
+            onSectorChanged?.invoke(currentSector)
+        }
+    }
+
+    private fun onSuccessfulDodge() {
+        // Boost combo
+        comboTimer = maxComboTimer
+        if (comboMultiplier < 5) {
+            comboMultiplier++
+        }
+        if (comboMultiplier > maxComboThisRun) {
+            maxComboThisRun = comboMultiplier
+        }
+        audio.playCombo(comboMultiplier)
+
+        val difficultyBonus = if (isOverdriveMode) 2 else 1
+        val multBonus = if (player.isScoreBoosted) player.scoreMultiplierValue else 1
+        score += (80 * comboMultiplier * difficultyBonus * multBonus)
+    }
+
+    private fun triggerNearMiss(ball: RollingBall) {
+        audio.playNearMiss()
+        cameraShakeMagnitude = 0.30f
+        player.nearMissTilt = if (ball.position.x > player.position.x) -14f else 14f
+
+        comboTimer = maxComboTimer
+        if (comboMultiplier < 5) comboMultiplier++
+        if (comboMultiplier > maxComboThisRun) maxComboThisRun = comboMultiplier
+
+        val difficultyBonus = if (isOverdriveMode) 2 else 1
+        val multBonus = if (player.isScoreBoosted) player.scoreMultiplierValue else 1
+        score += (220 * comboMultiplier * difficultyBonus * multBonus)
+
+        particles.emitBurst(
+            Vector3(
+                (player.position.x + ball.position.x) / 2f,
+                player.position.y + 0.8f,
+                player.position.z
+            ),
+            18,
+            floatArrayOf(0.0f, 0.95f, 1.0f)
+        )
+        onNearMissEvent?.invoke()
+    }
+
+    fun spawnCollectibleAt(type: CollectibleType, x: Float, z: Float) {
+        for (col in collectiblePool) {
+            if (!col.isActive) {
+                col.reset(type, x, z)
+                break
+            }
+        }
+    }
+
+    fun spawnRandomCollectible() {
+        val roll = Random.nextFloat()
+        val type = when {
+            roll < 0.32f -> CollectibleType.SHIELD
+            roll < 0.58f -> CollectibleType.SPEED_BOOST
+            roll < 0.82f -> CollectibleType.SCORE_MULTIPLIER
+            else -> CollectibleType.ENERGY_CELL
+        }
+
+        val laneChoice = Random.nextInt(3)
+        val spawnX = when (laneChoice) {
+            0 -> -3.2f
+            1 -> 0.0f
+            else -> 3.2f
+        } + (Random.nextFloat() - 0.5f) * 0.8f
+
+        val spawnZ = -80f - Random.nextFloat() * 20f
+        spawnCollectibleAt(type, spawnX, spawnZ)
+    }
+
+    fun clearAllTrackEntities() {
+        for (b in ballPool) {
+            b.isActive = false
+        }
+        for (col in collectiblePool) {
+            col.isActive = false
+        }
+        for (sp in speedPadPool) {
+            sp.isActive = false
+        }
+    }
+
+    private fun spawnSpeedPad() {
+        for (pad in speedPadPool) {
+            if (!pad.isActive) {
+                val padX = (Random.nextFloat() - 0.5f) * (roadHalfWidth * 1.2f)
+                val padZ = -75f - Random.nextFloat() * 15f
+                pad.reset(padX, padZ)
+                break
+            }
+        }
+    }
+
     private fun spawnObstacleWave() {
-        // Difficulty progression based on distance
         val dist = distanceTraveled
+        val overdriveFactor = if (isOverdriveMode) 1.25f else 1.0f
+
         val baseSpeed = when {
             dist < 60f -> 6.5f + Random.nextFloat() * 1.5f
             dist < 180f -> 8.5f + Random.nextFloat() * 2.0f
             dist < 400f -> 10.5f + Random.nextFloat() * 2.5f
             dist < 800f -> 12.5f + Random.nextFloat() * 3.0f
             else -> 14.5f + Random.nextFloat() * 3.5f
-        }
+        } * overdriveFactor
 
         nextSpawnInterval = when {
-            dist < 60f -> 2.5f + Random.nextFloat() * 0.6f
-            dist < 180f -> 2.0f + Random.nextFloat() * 0.5f
-            dist < 400f -> 1.5f + Random.nextFloat() * 0.4f
-            dist < 800f -> 1.2f + Random.nextFloat() * 0.3f
-            else -> 0.95f + Random.nextFloat() * 0.25f
-        }
+            dist < 60f -> 2.4f + Random.nextFloat() * 0.5f
+            dist < 180f -> 1.9f + Random.nextFloat() * 0.4f
+            dist < 400f -> 1.45f + Random.nextFloat() * 0.35f
+            dist < 800f -> 1.15f + Random.nextFloat() * 0.3f
+            else -> 0.90f + Random.nextFloat() * 0.22f
+        } / (if (isOverdriveMode) 1.25f else 1.0f)
 
         val spawnZ = -90f - Random.nextFloat() * 15f
         val roll = Random.nextFloat()
 
         val type = when {
             dist < 50f -> BallType.STRAIGHT
-            dist < 140f -> if (roll < 0.65f) BallType.STRAIGHT else if (roll < 0.85f) BallType.LEFT_TO_RIGHT else BallType.RIGHT_TO_LEFT
-            dist < 320f -> when {
+            dist < 150f -> if (roll < 0.60f) BallType.STRAIGHT else if (roll < 0.80f) BallType.LEFT_TO_RIGHT else BallType.RIGHT_TO_LEFT
+            dist < 350f -> when {
                 roll < 0.35f -> BallType.STRAIGHT
                 roll < 0.55f -> BallType.LEFT_TO_RIGHT
                 roll < 0.75f -> BallType.RIGHT_TO_LEFT
@@ -249,36 +716,35 @@ class GamePhysicsEngine(
                 else -> BallType.BOUNCING
             }
             else -> when {
-                roll < 0.25f -> BallType.STRAIGHT
-                roll < 0.45f -> BallType.LEFT_TO_RIGHT
-                roll < 0.65f -> BallType.RIGHT_TO_LEFT
-                roll < 0.80f -> BallType.FAST
-                roll < 0.92f -> BallType.GIANT
+                roll < 0.20f -> BallType.STRAIGHT
+                roll < 0.40f -> BallType.LEFT_TO_RIGHT
+                roll < 0.60f -> BallType.RIGHT_TO_LEFT
+                roll < 0.76f -> BallType.FAST
+                roll < 0.90f -> BallType.GIANT
                 else -> BallType.BOUNCING
             }
         }
 
-        // Lateral speed for crossing balls
         val lateralSpeed = when (type) {
-            BallType.LEFT_TO_RIGHT -> Random.nextFloat() * 2.4f + 1.2f
-            BallType.RIGHT_TO_LEFT -> -(Random.nextFloat() * 2.4f + 1.2f)
+            BallType.LEFT_TO_RIGHT -> Random.nextFloat() * 2.8f + 1.4f
+            BallType.RIGHT_TO_LEFT -> -(Random.nextFloat() * 2.8f + 1.4f)
             else -> 0f
         }
 
-        // Spawn position
         val spawnX = when (type) {
             BallType.LEFT_TO_RIGHT -> -(roadHalfWidth - 1.8f)
             BallType.RIGHT_TO_LEFT -> (roadHalfWidth - 1.8f)
-            BallType.GIANT -> (Random.nextFloat() - 0.5f) * (roadHalfWidth * 0.8f)
+            BallType.GIANT -> (Random.nextFloat() - 0.5f) * (roadHalfWidth * 0.7f)
             else -> (Random.nextFloat() - 0.5f) * (roadHalfWidth * 1.5f)
         }
 
         spawnBall(type, spawnX, spawnZ, baseSpeed, lateralSpeed)
 
-        // Occasionally spawn twin balls in higher difficulty
-        if (dist > 250f && Random.nextFloat() < 0.35f) {
-            val otherX = if (spawnX < 0) spawnX + 4.5f else spawnX - 4.5f
-            spawnBall(BallType.STRAIGHT, otherX, spawnZ - 10f, baseSpeed * 0.95f, 0f)
+        // Dynamic twin hazard waves in higher difficulty
+        val twinChance = if (isOverdriveMode) 0.50f else 0.30f
+        if (dist > 220f && Random.nextFloat() < twinChance) {
+            val otherX = if (spawnX < 0) spawnX + 5.2f else spawnX - 5.2f
+            spawnBall(BallType.STRAIGHT, otherX, spawnZ - 12f, baseSpeed * 0.95f, 0f)
         }
     }
 
@@ -298,7 +764,6 @@ class GamePhysicsEngine(
     }
 
     private fun checkCollision(p: PlayerCharacter, b: RollingBall): Boolean {
-        // Player bounding box
         val hw = p.torsoWidth / 2f + 0.12f
         val minX = p.position.x - hw
         val maxX = p.position.x + hw
@@ -307,13 +772,11 @@ class GamePhysicsEngine(
         val minZ = p.position.z - 0.25f
         val maxZ = p.position.z + 0.25f
 
-        // Ball center and effective collider radius (using 0.86 to ensure near misses feel fair)
         val bx = b.position.x
         val by = b.position.y
         val bz = b.position.z
-        val effectiveRadius = b.radius * 0.86f
+        val effectiveRadius = b.radius * 0.85f
 
-        // Find closest point on player box to ball center
         val cx = max(minX, min(bx, maxX))
         val cy = max(minY, min(by, maxY))
         val cz = max(minZ, min(bz, maxZ))
@@ -325,16 +788,23 @@ class GamePhysicsEngine(
         return (dx * dx + dy * dy + dz * dz) < (effectiveRadius * effectiveRadius)
     }
 
-    private fun triggerGameOver() {
+    private fun triggerGameOver(hitBall: RollingBall) {
         isGameOver = true
-        isRunning = false
+        crashTimer = 0f
+        player.triggerTumble()
         audio.playCrash()
-        // Emit spark burst at collision point
+        cameraShakeMagnitude = 1.1f
+
+        // Violent explosion sparks & rock fragments
         particles.emitBurst(
             Vector3(player.position.x, player.position.y + 0.8f, player.position.z),
-            40,
-            floatArrayOf(1f, 0.4f, 0.1f)
+            60,
+            hitBall.colorA
         )
-        onGameOver(score, distanceTraveled.toInt(), ballsDodged)
+        particles.emitShockwave(
+            Vector3(player.position.x, 0.05f, player.position.z),
+            32,
+            floatArrayOf(1f, 0.2f, 0.1f)
+        )
     }
 }

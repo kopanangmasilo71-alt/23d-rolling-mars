@@ -20,28 +20,44 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.HelpOutline
+import androidx.compose.material.icons.automirrored.filled.VolumeMute
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
+import androidx.compose.material.icons.filled.Bolt
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.EmojiEvents
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.filled.ShoppingBag
+import androidx.compose.material.icons.filled.Speed
+import androidx.compose.material.icons.filled.Stars
 import androidx.compose.material.icons.filled.Vibration
-import androidx.compose.material.icons.filled.VolumeMute
-import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRow
+import androidx.compose.material3.TabRowDefaults
+import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -57,6 +73,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.engine.CharacterModelId
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -67,21 +84,20 @@ fun MainMenu(
     modifier: Modifier = Modifier
 ) {
     val topRecord by viewModel.topRecord.collectAsStateWithLifecycle()
-    val allRecords by viewModel.allRecords.collectAsStateWithLifecycle()
     val currentPreset by viewModel.characterColor.collectAsStateWithLifecycle()
+    val isOverdrive by viewModel.isOverdriveMode.collectAsStateWithLifecycle()
     val soundOn by viewModel.soundEnabled.collectAsStateWithLifecycle()
     val vibrationOn by viewModel.vibrationEnabled.collectAsStateWithLifecycle()
+    val profile by viewModel.playerProfile.collectAsStateWithLifecycle()
 
     var showHowToPlay by remember { mutableStateOf(false) }
     var showHighScores by remember { mutableStateOf(false) }
+    var showCharacterHangar by remember { mutableStateOf(false) }
 
-    val presets = listOf(
-        "Classic Blue" to Color(0xFF1E88E5),
-        "Neon Orange" to Color(0xFFFF6D00),
-        "Emerald Runner" to Color(0xFF00C853),
-        "Cyber Violet" to Color(0xFFAA00FF),
-        "Solar Gold" to Color(0xFFFFD600)
-    )
+    val walletPoints = profile?.totalPoints ?: 0
+    val equippedId = profile?.equippedCharacterId ?: "vanguard"
+    val equippedModel = CharacterModelId.fromId(equippedId)
+    val unlockedSet = (profile?.unlockedCharacterIds ?: "vanguard").split(",").map { it.trim().lowercase() }.toSet()
 
     Box(
         modifier = modifier
@@ -89,50 +105,81 @@ fun MainMenu(
             .background(
                 Brush.verticalGradient(
                     listOf(
-                        Color(0xD90A0E1A),
-                        Color(0xE6121829),
-                        Color(0xF2161E38)
+                        Color(0xFF060B18),
+                        Color(0xFF0E162B),
+                        Color(0xFF121C38)
                     )
                 )
             )
             .statusBarsPadding()
             .navigationBarsPadding()
-            .padding(24.dp)
+            .padding(18.dp)
     ) {
-        // TOP CONTROLS (Sound, Vibration, How to Play, Leaderboard)
+        // TOP BAR (High Score Chip & Wallet Chip & Settings Actions)
         Row(
             modifier = Modifier
-                .align(Alignment.TopEnd)
+                .align(Alignment.TopCenter)
                 .fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Trophy / High score chip
-            Surface(
-                shape = RoundedCornerShape(20.dp),
-                color = Color(0x33FFD54F),
-                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0x66FFD54F)),
-                modifier = Modifier
-                    .clickable { showHighScores = true }
-                    .testTag("btn_show_records")
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically
+            // High score chip & Wallet Points chip
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Surface(
+                    shape = RoundedCornerShape(20.dp),
+                    color = Color(0x33FFD54F),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0x66FFD54F)),
+                    modifier = Modifier
+                        .clickable { showHighScores = true }
+                        .testTag("btn_show_records")
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.EmojiEvents,
-                        contentDescription = "Leaderboard",
-                        tint = Color(0xFFFFD54F),
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = if (topRecord != null) "BEST: ${topRecord?.score}" else "LEADERBOARD",
-                        color = Color(0xFFFFD54F),
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold
-                    )
+                    Row(
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.EmojiEvents,
+                            contentDescription = "Leaderboard",
+                            tint = Color(0xFFFFD54F),
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = if (topRecord != null) "${topRecord?.score}" else "TOP",
+                            color = Color(0xFFFFD54F),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Black
+                        )
+                    }
+                }
+
+                // Points Wallet Chip (Clickable to open Character Hangar)
+                Surface(
+                    shape = RoundedCornerShape(20.dp),
+                    color = Color(0x3300E5FF),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0x6600E5FF)),
+                    modifier = Modifier
+                        .clickable { showCharacterHangar = true }
+                        .testTag("btn_wallet_hangar")
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Stars,
+                            contentDescription = "Credits",
+                            tint = Color(0xFF00E5FF),
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "$walletPoints PTS",
+                            color = Color(0xFF00E5FF),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Black
+                        )
+                    }
                 }
             }
 
@@ -141,42 +188,45 @@ fun MainMenu(
                 IconButton(
                     onClick = { showHowToPlay = true },
                     modifier = Modifier
-                        .size(42.dp)
+                        .size(38.dp)
                         .background(Color(0x33FFFFFF), CircleShape)
                         .testTag("btn_how_to_play")
                 ) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.HelpOutline,
                         contentDescription = "How to play",
-                        tint = Color.White
+                        tint = Color.White,
+                        modifier = Modifier.size(18.dp)
                     )
                 }
 
                 IconButton(
                     onClick = { viewModel.toggleSound() },
                     modifier = Modifier
-                        .size(42.dp)
+                        .size(38.dp)
                         .background(if (soundOn) Color(0x3300E5FF) else Color(0x33FFFFFF), CircleShape)
                         .testTag("btn_toggle_sound")
                 ) {
                     Icon(
-                        imageVector = if (soundOn) Icons.Default.VolumeUp else Icons.Default.VolumeMute,
+                        imageVector = if (soundOn) Icons.AutoMirrored.Filled.VolumeUp else Icons.AutoMirrored.Filled.VolumeMute,
                         contentDescription = "Toggle sound",
-                        tint = if (soundOn) Color(0xFF00E5FF) else Color(0x88FFFFFF)
+                        tint = if (soundOn) Color(0xFF00E5FF) else Color(0x88FFFFFF),
+                        modifier = Modifier.size(18.dp)
                     )
                 }
 
                 IconButton(
                     onClick = { viewModel.toggleVibration() },
                     modifier = Modifier
-                        .size(42.dp)
+                        .size(38.dp)
                         .background(if (vibrationOn) Color(0x3300E676) else Color(0x33FFFFFF), CircleShape)
                         .testTag("btn_toggle_vibration")
                 ) {
                     Icon(
                         imageVector = Icons.Default.Vibration,
                         contentDescription = "Toggle vibration",
-                        tint = if (vibrationOn) Color(0xFF00E676) else Color(0x88FFFFFF)
+                        tint = if (vibrationOn) Color(0xFF00E676) else Color(0x88FFFFFF),
+                        modifier = Modifier.size(18.dp)
                     )
                 }
             }
@@ -189,31 +239,32 @@ fun MainMenu(
                 .fillMaxWidth(),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // Stylized Title
+            // Cyberpunk Game Logo
             Text(
                 text = "ROLL",
-                fontSize = 46.sp,
+                fontSize = 42.sp,
                 fontWeight = FontWeight.Black,
                 letterSpacing = 4.sp,
                 color = Color.White
             )
             Text(
                 text = "RUNNER",
-                fontSize = 46.sp,
+                fontSize = 42.sp,
                 fontWeight = FontWeight.Black,
                 letterSpacing = 6.sp,
                 color = Color(0xFF00E5FF)
             )
 
-            Spacer(modifier = Modifier.height(6.dp))
+            Spacer(modifier = Modifier.height(2.dp))
 
             Surface(
                 shape = RoundedCornerShape(12.dp),
-                color = Color(0x2500E5FF)
+                color = Color(0x2800E5FF),
+                border = androidx.compose.foundation.BorderStroke(0.5.dp, Color(0xFF00E5FF))
             ) {
                 Text(
-                    text = "3D ROLLING BOULDER SURVIVAL",
-                    fontSize = 11.sp,
+                    text = "3D BOULDER SURVIVAL • MULTI-MODEL CHASSIS",
+                    fontSize = 10.sp,
                     fontWeight = FontWeight.Bold,
                     letterSpacing = 2.sp,
                     color = Color(0xFF80D8FF),
@@ -221,87 +272,265 @@ fun MainMenu(
                 )
             }
 
-            Spacer(modifier = Modifier.height(36.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
-            // BIG PLAY BUTTON
+            // DIFFICULTY MODE SELECTOR (Standard vs Overdrive 2X)
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = Color(0x22FFFFFF),
+                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0x33FFFFFF)),
+                modifier = Modifier.fillMaxWidth(0.88f)
+            ) {
+                Row(
+                    modifier = Modifier.padding(4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    // Standard Mode Tab
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = if (!isOverdrive) Color(0xFF00E5FF) else Color.Transparent,
+                        modifier = Modifier
+                            .weight(1f)
+                            .clickable { viewModel.setOverdriveMode(false) }
+                            .testTag("mode_standard")
+                    ) {
+                        Text(
+                            text = "STANDARD",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Black,
+                            letterSpacing = 1.sp,
+                            color = if (!isOverdrive) Color(0xFF0A0E1A) else Color(0xFFB0BEC5),
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.padding(vertical = 8.dp)
+                        )
+                    }
+
+                    // Overdrive Mode Tab
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = if (isOverdrive) Color(0xFFFF3D00) else Color.Transparent,
+                        modifier = Modifier
+                            .weight(1f)
+                            .clickable { viewModel.setOverdriveMode(true) }
+                            .testTag("mode_overdrive")
+                    ) {
+                        Row(
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(vertical = 8.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Bolt,
+                                contentDescription = null,
+                                tint = if (isOverdrive) Color.White else Color(0xFFFF7043),
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Spacer(modifier = Modifier.width(3.dp))
+                            Text(
+                                text = "OVERDRIVE 2X",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Black,
+                                letterSpacing = 1.sp,
+                                color = if (isOverdrive) Color.White else Color(0xFFFF7043)
+                            )
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(18.dp))
+
+            // START RUN BUTTON
             Button(
                 onClick = { viewModel.startGame() },
                 modifier = Modifier
-                    .fillMaxWidth(0.78f)
-                    .height(64.dp)
+                    .fillMaxWidth(0.88f)
+                    .height(56.dp)
                     .testTag("btn_play_game"),
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFF00E5FF),
-                    contentColor = Color(0xFF0A1020)
+                    containerColor = if (isOverdrive) Color(0xFFFF3D00) else Color(0xFF00E5FF),
+                    contentColor = if (isOverdrive) Color.White else Color(0xFF0A1020)
                 ),
-                shape = RoundedCornerShape(32.dp),
+                shape = RoundedCornerShape(28.dp),
                 elevation = ButtonDefaults.buttonElevation(defaultElevation = 8.dp)
             ) {
                 Icon(
                     imageVector = Icons.Default.PlayArrow,
                     contentDescription = null,
-                    modifier = Modifier.size(32.dp)
+                    modifier = Modifier.size(28.dp)
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = "START RUN",
-                    fontSize = 20.sp,
+                    text = if (isOverdrive) "LAUNCH OVERDRIVE" else "START RUN",
+                    fontSize = 17.sp,
                     fontWeight = FontWeight.Black,
-                    letterSpacing = 1.sp
+                    letterSpacing = 1.5.sp
                 )
             }
 
-            Spacer(modifier = Modifier.height(30.dp))
+            Spacer(modifier = Modifier.height(18.dp))
 
-            // CHARACTER SUIT PRESETS
-            Text(
-                text = "RUNNER SUIT STYLE",
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 1.5.sp,
-                color = Color(0xAAFFFFFF)
-            )
-
-            Spacer(modifier = Modifier.height(10.dp))
-
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                verticalAlignment = Alignment.CenterVertically
+            // 3D PILOT ARMORY / CHASSIS CARD
+            Surface(
+                shape = RoundedCornerShape(18.dp),
+                color = Color(0x24101A36),
+                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0x4400E5FF)),
+                modifier = Modifier
+                    .fillMaxWidth(0.92f)
+                    .clickable { showCharacterHangar = true }
+                    .testTag("card_pilot_hangar")
             ) {
-                presets.forEach { (name, color) ->
-                    val isSelected = currentPreset == name
-                    Box(
-                        modifier = Modifier
-                            .size(if (isSelected) 46.dp else 38.dp)
-                            .clip(CircleShape)
-                            .background(color)
-                            .border(
-                                width = if (isSelected) 3.dp else 1.dp,
-                                color = if (isSelected) Color.White else Color(0x44FFFFFF),
-                                shape = CircleShape
+                Column(
+                    modifier = Modifier.padding(14.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text(
+                                text = "ACTIVE PILOT CHASSIS",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 1.5.sp,
+                                color = Color(0x99FFFFFF)
                             )
-                            .clickable { viewModel.setCharacterColor(name) }
-                            .testTag("color_preset_${name.replace(" ", "_").lowercase()}")
+                            Text(
+                                text = equippedModel.displayName,
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Black,
+                                color = when (equippedModel) {
+                                    CharacterModelId.TITAN -> Color(0xFFFF7043)
+                                    CharacterModelId.VALKYRIE -> Color(0xFF00E676)
+                                    CharacterModelId.PHANTOM -> Color(0xFFE040FB)
+                                    CharacterModelId.CHRONOS -> Color(0xFFFFD54F)
+                                    CharacterModelId.VANGUARD -> Color(0xFF00E5FF)
+                                }
+                            )
+                        }
+
+                        // Hangar Shop Button
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = Color(0x3300E5FF),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0x6600E5FF))
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.ShoppingBag,
+                                    contentDescription = "Hangar Shop",
+                                    tint = Color(0xFF00E5FF),
+                                    modifier = Modifier.size(14.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = "HANGAR",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Black,
+                                    color = Color(0xFF00E5FF)
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    Text(
+                        text = "${equippedModel.title} • ${equippedModel.perkName}: ${equippedModel.perkDescription}",
+                        fontSize = 11.sp,
+                        color = Color(0xFFB0BEC5),
+                        textAlign = TextAlign.Center,
+                        maxLines = 2
                     )
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    // Quick Character Switch Carousel
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        CharacterModelId.entries.forEach { model ->
+                            val isSelected = equippedModel == model
+                            val isUnlocked = unlockedSet.contains(model.id.lowercase())
+                            val modelColor = when (model) {
+                                CharacterModelId.VANGUARD -> Color(0xFF00E5FF)
+                                CharacterModelId.TITAN -> Color(0xFFFF7043)
+                                CharacterModelId.VALKYRIE -> Color(0xFF00E676)
+                                CharacterModelId.PHANTOM -> Color(0xFFE040FB)
+                                CharacterModelId.CHRONOS -> Color(0xFFFFD54F)
+                            }
+
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = if (isSelected) modelColor.copy(alpha = 0.35f) else Color(0x22FFFFFF),
+                                border = androidx.compose.foundation.BorderStroke(
+                                    width = if (isSelected) 2.dp else 1.dp,
+                                    color = if (isSelected) modelColor else Color(0x33FFFFFF)
+                                ),
+                                modifier = Modifier
+                                    .clickable {
+                                        if (isUnlocked) {
+                                            viewModel.selectOrPurchaseCharacter(model)
+                                        } else {
+                                            showCharacterHangar = true
+                                        }
+                                    }
+                                    .testTag("quick_select_${model.id}")
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(8.dp)
+                                            .clip(CircleShape)
+                                            .background(modelColor)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = model.displayName.split(" ").first(),
+                                        fontSize = 10.sp,
+                                        fontWeight = if (isSelected) FontWeight.Black else FontWeight.Bold,
+                                        color = if (isSelected) Color.White else Color(0xCCFFFFFF)
+                                    )
+                                    if (!isUnlocked) {
+                                        Spacer(modifier = Modifier.width(3.dp))
+                                        Icon(
+                                            imageVector = Icons.Default.Lock,
+                                            contentDescription = "Locked",
+                                            tint = Color(0xFFFFD54F),
+                                            modifier = Modifier.size(10.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
-
-            Spacer(modifier = Modifier.height(6.dp))
-
-            Text(
-                text = currentPreset,
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Medium,
-                color = Color.White
-            )
         }
 
         // FOOTER INFO
         Text(
-            text = "Smooth analog touch physics • Dynamic obstacles",
-            fontSize = 11.sp,
+            text = "Custom 3D Geometries & Armor • Real-Time Combos • Near-Miss Reflexes",
+            fontSize = 10.sp,
             color = Color(0x66FFFFFF),
             modifier = Modifier.align(Alignment.BottomCenter)
+        )
+    }
+
+    // CHARACTER HANGAR & 3D ROSTER MODAL
+    if (showCharacterHangar) {
+        CharacterHangarDialog(
+            viewModel = viewModel,
+            onDismiss = { showCharacterHangar = false }
         )
     }
 
@@ -310,7 +539,7 @@ fun MainMenu(
         Dialog(onDismissRequest = { showHowToPlay = false }) {
             Card(
                 shape = RoundedCornerShape(24.dp),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFF141A2E)),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF10172D)),
                 border = androidx.compose.foundation.BorderStroke(1.dp, Color(0x4400E5FF)),
                 modifier = Modifier
                     .fillMaxWidth()
@@ -321,114 +550,192 @@ fun MainMenu(
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Text(
-                        text = "HOW TO PLAY",
-                        fontSize = 20.sp,
+                        text = "TACTICAL GUIDE",
+                        fontSize = 18.sp,
                         fontWeight = FontWeight.Black,
-                        color = Color(0xFF00E5FF)
+                        color = Color(0xFF00E5FF),
+                        letterSpacing = 1.sp
                     )
 
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    InstructionRow("LEFT / RIGHT", "Hold to smoothly steer across the road with momentum and banking.", Color(0xFF00E5FF))
-                    Spacer(modifier = Modifier.height(10.dp))
-                    InstructionRow("BRAKE", "Hold to decelerate forward speed and let fast crossing balls pass.", Color(0xFFFF5252))
-                    Spacer(modifier = Modifier.height(10.dp))
-                    InstructionRow("JUMP", "Launch into the air to clear standard incoming rolling balls.", Color(0xFFFFD600))
-                    Spacer(modifier = Modifier.height(10.dp))
-                    InstructionRow("OBSTACLES", "Avoid straight, crossing, bouncing, and giant juggernaut spheres.", Color(0xFFB388FF))
+                    InstructionRow("STEER", "Hold Left / Right for analog lane shifts with momentum & lean.", Color(0xFF00E5FF))
+                    Spacer(modifier = Modifier.height(8.dp))
+                    InstructionRow("JUMP", "Tuck & leap over straight boulders and bouncers.", Color(0xFFFFD600))
+                    Spacer(modifier = Modifier.height(8.dp))
+                    InstructionRow("BRAKE", "Decelerate forward speed to let diagonal crossers roll by.", Color(0xFFFF5252))
+                    Spacer(modifier = Modifier.height(8.dp))
+                    InstructionRow("SHIELD", "Absorbs 1 direct boulder hit so you can continue running!", Color(0xFF00E5FF))
+                    Spacer(modifier = Modifier.height(8.dp))
+                    InstructionRow("2X MULTIPLY", "Doubles distance & dodge score points for 9 seconds!", Color(0xFFFFD54F))
+                    Spacer(modifier = Modifier.height(8.dp))
+                    InstructionRow("HYPER BOOST", "Extreme rocket propulsion and speed boost!", Color(0xFF00E676))
+                    Spacer(modifier = Modifier.height(8.dp))
+                    InstructionRow("CLOSE CALL", "Brush closely past boulders for +200 pts & instant combo!", Color(0xFF80D8FF))
 
                     Spacer(modifier = Modifier.height(20.dp))
 
                     Button(
                         onClick = { showHowToPlay = false },
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00E5FF)),
-                        shape = RoundedCornerShape(14.dp),
+                        shape = RoundedCornerShape(12.dp),
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Text("GOT IT!", color = Color(0xFF0A1020), fontWeight = FontWeight.Bold)
+                        Text("LET'S ROLL!", color = Color(0xFF0A1020), fontWeight = FontWeight.Bold)
                     }
                 }
             }
         }
     }
 
-    // HIGH SCORES LEADERBOARD MODAL
+    // HIGH SCORES & CAREER STATS MODAL
     if (showHighScores) {
-        Dialog(onDismissRequest = { showHighScores = false }) {
-            Card(
-                shape = RoundedCornerShape(24.dp),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFF141A2E)),
-                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0x44FFD54F)),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp)
+        HighScoresDialog(
+            viewModel = viewModel,
+            onDismiss = { showHighScores = false }
+        )
+    }
+}
+
+@Composable
+fun HighScoresDialog(
+    viewModel: GameViewModel,
+    onDismiss: () -> Unit
+) {
+    val top10 by viewModel.top10Records.collectAsStateWithLifecycle()
+    val career by viewModel.careerStats.collectAsStateWithLifecycle()
+    var selectedTab by remember { mutableIntStateOf(0) }
+
+    Dialog(onDismissRequest = onDismiss) {
+        Card(
+            shape = RoundedCornerShape(24.dp),
+            colors = CardDefaults.cardColors(containerColor = Color(0xFF0E1528)),
+            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0x66FFD54F)),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp)
+        ) {
+            Column(
+                modifier = Modifier.padding(18.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Column(
-                    modifier = Modifier.padding(20.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Default.EmojiEvents,
-                            contentDescription = null,
-                            tint = Color(0xFFFFD54F),
-                            modifier = Modifier.size(24.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "HIGH SCORES",
-                            fontSize = 20.sp,
-                            fontWeight = FontWeight.Black,
+                // Header with Trophy
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.EmojiEvents,
+                        contentDescription = null,
+                        tint = Color(0xFFFFD54F),
+                        modifier = Modifier.size(22.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "HALL OF FAME",
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Black,
+                        color = Color(0xFFFFD54F),
+                        letterSpacing = 1.sp
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Tabs: Top Runs vs Career Stats
+                TabRow(
+                    selectedTabIndex = selectedTab,
+                    containerColor = Color(0x18FFFFFF),
+                    contentColor = Color.White,
+                    indicator = { tabPositions ->
+                        TabRowDefaults.SecondaryIndicator(
+                            Modifier.tabIndicatorOffset(tabPositions[selectedTab]),
                             color = Color(0xFFFFD54F)
                         )
-                    }
+                    },
+                    modifier = Modifier.clip(RoundedCornerShape(10.dp))
+                ) {
+                    Tab(
+                        selected = selectedTab == 0,
+                        onClick = { selectedTab = 0 },
+                        text = { Text("TOP RUNS", fontSize = 12.sp, fontWeight = FontWeight.Bold) }
+                    )
+                    Tab(
+                        selected = selectedTab == 1,
+                        onClick = { selectedTab = 1 },
+                        text = { Text("CAREER STATS", fontSize = 12.sp, fontWeight = FontWeight.Bold) }
+                    )
+                }
 
-                    Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(14.dp))
 
-                    if (allRecords.isEmpty()) {
+                if (selectedTab == 0) {
+                    // Leaderboard List
+                    if (top10.isEmpty()) {
                         Text(
-                            text = "No runs yet. Start your first run to record your high score!",
+                            text = "No runs recorded yet.\nSurvive boulders to build your legacy!",
                             fontSize = 13.sp,
                             color = Color(0x88FFFFFF),
                             textAlign = TextAlign.Center,
-                            modifier = Modifier.padding(vertical = 24.dp)
+                            modifier = Modifier.padding(vertical = 36.dp)
                         )
                     } else {
                         LazyColumn(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(220.dp)
+                                .height(260.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
-                            itemsIndexed(allRecords) { idx, item ->
+                            itemsIndexed(top10) { idx, item ->
+                                val rankBadge = when (idx) {
+                                    0 -> "🥇"
+                                    1 -> "🥈"
+                                    2 -> "🥉"
+                                    else -> "#${idx + 1}"
+                                }
                                 Surface(
-                                    shape = RoundedCornerShape(10.dp),
-                                    color = if (idx == 0) Color(0x33FFD54F) else Color(0x22FFFFFF),
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(vertical = 4.dp)
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = if (idx == 0) Color(0x33FFD54F) else Color(0x1AFFFFFF),
+                                    border = if (idx == 0) androidx.compose.foundation.BorderStroke(0.5.dp, Color(0xFFFFD54F)) else null,
+                                    modifier = Modifier.fillMaxWidth()
                                 ) {
                                     Row(
                                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
                                         horizontalArrangement = Arrangement.SpaceBetween,
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Text(
-                                            text = "#${idx + 1}",
-                                            fontWeight = FontWeight.Bold,
-                                            color = if (idx == 0) Color(0xFFFFD54F) else Color.White,
-                                            fontSize = 14.sp
-                                        )
-                                        Column {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
                                             Text(
-                                                text = "${item.score} pts",
-                                                fontWeight = FontWeight.ExtraBold,
-                                                color = Color.White,
-                                                fontSize = 15.sp
+                                                text = rankBadge,
+                                                fontSize = if (idx < 3) 18.sp else 13.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = if (idx == 0) Color(0xFFFFD54F) else Color.White,
+                                                modifier = Modifier.width(32.dp)
+                                            )
+                                            Column {
+                                                Text(
+                                                    text = "${item.score} pts",
+                                                    fontWeight = FontWeight.Black,
+                                                    color = Color.White,
+                                                    fontSize = 15.sp
+                                                )
+                                                Text(
+                                                    text = "${item.distanceMeters}m • ${item.ballsDodged} dodged • ${item.maxCombo}x combo",
+                                                    color = Color(0xAAFFFFFF),
+                                                    fontSize = 10.sp
+                                                )
+                                            }
+                                        }
+
+                                        Column(horizontalAlignment = Alignment.End) {
+                                            Text(
+                                                text = item.sectorReached,
+                                                fontSize = 10.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color(0xFF00E5FF)
                                             )
                                             Text(
-                                                text = "${item.distanceMeters}m • ${item.ballsDodged} dodged",
-                                                color = Color(0xAAFFFFFF),
-                                                fontSize = 11.sp
+                                                text = item.difficultyMode.uppercase(),
+                                                fontSize = 9.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = if (item.difficultyMode == "Overdrive") Color(0xFFFF5722) else Color(0xFF78909C)
                                             )
                                         }
                                     }
@@ -436,19 +743,84 @@ fun MainMenu(
                             }
                         }
                     }
-
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    Button(
-                        onClick = { showHighScores = false },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFFD54F)),
-                        shape = RoundedCornerShape(14.dp),
-                        modifier = Modifier.fillMaxWidth()
+                } else {
+                    // Career Lifetime Stats Tab
+                    val runnerLevel = 1 + (career.totalScore / 5000).toInt()
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(260.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Text("CLOSE", color = Color(0xFF0A1020), fontWeight = FontWeight.Bold)
+                        Surface(
+                            shape = RoundedCornerShape(14.dp),
+                            color = Color(0x33FFD54F),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(12.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column {
+                                    Text(
+                                        text = "RUNNER LICENSE",
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFFFFD54F)
+                                    )
+                                    Text(
+                                        text = "LEVEL $runnerLevel",
+                                        fontSize = 20.sp,
+                                        fontWeight = FontWeight.Black,
+                                        color = Color.White
+                                    )
+                                }
+                                Text(
+                                    text = "${career.totalScore} Total XP",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFFFFE082)
+                                )
+                            }
+                        }
+
+                        CareerStatRow("Total Distance Run", "${career.totalDistance} meters", Color(0xFF80D8FF))
+                        CareerStatRow("Total Boulders Dodged", "${career.totalDodged}", Color(0xFF81C784))
+                        CareerStatRow("Highest Combo Chain", "${career.maxComboEver}X", Color(0xFFFF80AB))
+                        CareerStatRow("Total Games Played", "${career.totalGamesPlayed}", Color(0xFFB0BEC5))
                     }
                 }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                Button(
+                    onClick = onDismiss,
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFFD54F)),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("BACK TO GAME", color = Color(0xFF0A1020), fontWeight = FontWeight.Black)
+                }
             }
+        }
+    }
+}
+
+@Composable
+private fun CareerStatRow(title: String, value: String, accentColor: Color) {
+    Surface(
+        shape = RoundedCornerShape(10.dp),
+        color = Color(0x18FFFFFF),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(title, fontSize = 12.sp, color = Color(0xFFB0BEC5))
+            Text(value, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = accentColor)
         }
     }
 }
@@ -462,12 +834,12 @@ private fun InstructionRow(title: String, desc: String, accentColor: Color) {
         Surface(
             shape = RoundedCornerShape(6.dp),
             color = accentColor.copy(alpha = 0.2f),
-            modifier = Modifier.width(92.dp)
+            modifier = Modifier.width(96.dp)
         ) {
             Text(
                 text = title,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Bold,
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Black,
                 color = accentColor,
                 textAlign = TextAlign.Center,
                 modifier = Modifier.padding(vertical = 4.dp)
@@ -476,9 +848,469 @@ private fun InstructionRow(title: String, desc: String, accentColor: Color) {
         Spacer(modifier = Modifier.width(10.dp))
         Text(
             text = desc,
-            fontSize = 12.sp,
+            fontSize = 11.sp,
             color = Color(0xDDFFFFFF),
             modifier = Modifier.weight(1f)
+        )
+    }
+}
+
+@Composable
+fun CharacterHangarDialog(
+    viewModel: GameViewModel,
+    onDismiss: () -> Unit
+) {
+    val profile by viewModel.playerProfile.collectAsStateWithLifecycle()
+    val walletPoints = profile?.totalPoints ?: 0
+    val equippedId = profile?.equippedCharacterId ?: "vanguard"
+    val unlockedSet = (profile?.unlockedCharacterIds ?: "vanguard")
+        .split(",").map { it.trim().lowercase() }.toSet()
+
+    var selectedModel by remember {
+        mutableStateOf(CharacterModelId.fromId(equippedId))
+    }
+
+    val isEquipped = equippedId.equals(selectedModel.id, ignoreCase = true)
+    val isUnlocked = unlockedSet.contains(selectedModel.id.lowercase())
+    val canAfford = walletPoints >= selectedModel.price
+
+    val modelAccentColor = when (selectedModel) {
+        CharacterModelId.VANGUARD -> Color(0xFF00E5FF)
+        CharacterModelId.TITAN -> Color(0xFFFF7043)
+        CharacterModelId.VALKYRIE -> Color(0xFF00E676)
+        CharacterModelId.PHANTOM -> Color(0xFFE040FB)
+        CharacterModelId.CHRONOS -> Color(0xFFFFD54F)
+    }
+
+    Dialog(onDismissRequest = onDismiss) {
+        Card(
+            shape = RoundedCornerShape(26.dp),
+            colors = CardDefaults.cardColors(containerColor = Color(0xF210162B)),
+            border = androidx.compose.foundation.BorderStroke(1.5.dp, modelAccentColor.copy(alpha = 0.6f)),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(8.dp)
+                .testTag("dialog_character_hangar")
+        ) {
+            Column(
+                modifier = Modifier.padding(18.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                // MODAL HEADER (Title, Wallet Points Chip, Close)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text(
+                            text = "3D PILOT HANGAR",
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Black,
+                            letterSpacing = 1.sp,
+                            color = Color.White
+                        )
+                        Text(
+                            text = "CUSTOM 3D RUNNER MODELS",
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 1.5.sp,
+                            color = Color(0xFF80D8FF)
+                        )
+                    }
+
+                    Surface(
+                        shape = RoundedCornerShape(16.dp),
+                        color = Color(0x3300E5FF),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0x6600E5FF))
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Stars,
+                                contentDescription = null,
+                                tint = Color(0xFF00E5FF),
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = "$walletPoints PTS",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Black,
+                                color = Color(0xFF00E5FF)
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // CHARACTER SELECTION TABS ROW
+                LazyRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    items(CharacterModelId.entries) { model ->
+                        val isSelected = selectedModel == model
+                        val isOwned = unlockedSet.contains(model.id.lowercase())
+                        val isCurrentlyEquipped = equippedId.equals(model.id, ignoreCase = true)
+                        val color = when (model) {
+                            CharacterModelId.VANGUARD -> Color(0xFF00E5FF)
+                            CharacterModelId.TITAN -> Color(0xFFFF7043)
+                            CharacterModelId.VALKYRIE -> Color(0xFF00E676)
+                            CharacterModelId.PHANTOM -> Color(0xFFE040FB)
+                            CharacterModelId.CHRONOS -> Color(0xFFFFD54F)
+                        }
+
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = if (isSelected) color.copy(alpha = 0.25f) else Color(0x18FFFFFF),
+                            border = androidx.compose.foundation.BorderStroke(
+                                width = if (isSelected) 2.dp else 1.dp,
+                                color = if (isSelected) color else Color(0x33FFFFFF)
+                            ),
+                            modifier = Modifier
+                                .clickable { selectedModel = model }
+                                .testTag("tab_hangar_${model.id}")
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(10.dp)
+                                        .clip(CircleShape)
+                                        .background(color)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = model.displayName.split(" ").first(),
+                                    fontSize = 11.sp,
+                                    fontWeight = if (isSelected) FontWeight.Black else FontWeight.Bold,
+                                    color = if (isSelected) Color.White else Color(0xBBFFFFFF)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                if (isCurrentlyEquipped) {
+                                    Icon(
+                                        imageVector = Icons.Default.Check,
+                                        contentDescription = "Equipped",
+                                        tint = Color(0xFF00E676),
+                                        modifier = Modifier.size(12.dp)
+                                    )
+                                } else if (!isOwned) {
+                                    Icon(
+                                        imageVector = Icons.Default.Lock,
+                                        contentDescription = "Locked",
+                                        tint = Color(0xFFFFD54F),
+                                        modifier = Modifier.size(11.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // SELECTED CHARACTER SHOWCASE CARD
+                Surface(
+                    shape = RoundedCornerShape(18.dp),
+                    color = Color(0x280A1020),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, modelAccentColor.copy(alpha = 0.4f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier.padding(14.dp)
+                    ) {
+                        // Title & Badge
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column {
+                                Text(
+                                    text = selectedModel.displayName,
+                                    fontSize = 17.sp,
+                                    fontWeight = FontWeight.Black,
+                                    color = modelAccentColor
+                                )
+                                Text(
+                                    text = selectedModel.title,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFFB0BEC5)
+                                )
+                            }
+
+                            // Price or Status Badge
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = when {
+                                    isEquipped -> Color(0x3300E676)
+                                    isUnlocked -> Color(0x3300E5FF)
+                                    else -> Color(0x33FFD54F)
+                                }
+                            ) {
+                                Text(
+                                    text = when {
+                                        isEquipped -> "EQUIPPED"
+                                        isUnlocked -> "OWNED"
+                                        selectedModel.price == 0 -> "FREE"
+                                        else -> "${selectedModel.price} PTS"
+                                    },
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Black,
+                                    color = when {
+                                        isEquipped -> Color(0xFF00E676)
+                                        isUnlocked -> Color(0xFF00E5FF)
+                                        else -> Color(0xFFFFD54F)
+                                    },
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        // 3D Silhouette / Mesh Architecture Description
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = Color(0x18FFFFFF),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(10.dp)) {
+                                Text(
+                                    text = "3D MESH ARCHITECTURE",
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.Black,
+                                    letterSpacing = 1.sp,
+                                    color = modelAccentColor
+                                )
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = selectedModel.description,
+                                    fontSize = 11.sp,
+                                    color = Color(0xEEFFFFFF),
+                                    lineHeight = 15.sp
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        // STAT BARS
+                        StatMeter("Armor Plating", selectedModel.armorRating, 5, modelAccentColor)
+                        Spacer(modifier = Modifier.height(4.dp))
+                        StatMeter("Sprint Velocity", selectedModel.speedRating, 5, modelAccentColor)
+                        Spacer(modifier = Modifier.height(4.dp))
+                        StatMeter("Tech & Perks", selectedModel.techRating, 5, modelAccentColor)
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        // SIGNATURE PERK CARD
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = modelAccentColor.copy(alpha = 0.12f),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, modelAccentColor.copy(alpha = 0.35f)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(10.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Security,
+                                    contentDescription = null,
+                                    tint = modelAccentColor,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Column {
+                                    Text(
+                                        text = selectedModel.perkName,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Black,
+                                        color = modelAccentColor
+                                    )
+                                    Text(
+                                        text = selectedModel.perkDescription,
+                                        fontSize = 10.sp,
+                                        color = Color(0xDDFFFFFF)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // ACTION BUTTON: Equip / Purchase
+                when {
+                    isEquipped -> {
+                        Surface(
+                            shape = RoundedCornerShape(14.dp),
+                            color = Color(0x2200E676),
+                            border = androidx.compose.foundation.BorderStroke(1.5.dp, Color(0xFF00E676)),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(48.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxSize(),
+                                horizontalArrangement = Arrangement.Center,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Check,
+                                    contentDescription = null,
+                                    tint = Color(0xFF00E676),
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "ACTIVE PILOT EQUIPPED",
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Black,
+                                    color = Color(0xFF00E676),
+                                    letterSpacing = 1.sp
+                                )
+                            }
+                        }
+                    }
+                    isUnlocked -> {
+                        Button(
+                            onClick = { viewModel.selectOrPurchaseCharacter(selectedModel) },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = modelAccentColor,
+                                contentColor = Color(0xFF0A1020)
+                            ),
+                            shape = RoundedCornerShape(14.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(48.dp)
+                                .testTag("btn_equip_${selectedModel.id}")
+                        ) {
+                            Text(
+                                text = "DEPLOY ${selectedModel.displayName.uppercase()}",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Black,
+                                letterSpacing = 1.sp
+                            )
+                        }
+                    }
+                    canAfford -> {
+                        Button(
+                            onClick = { viewModel.selectOrPurchaseCharacter(selectedModel) },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color(0xFFFFD54F),
+                                contentColor = Color(0xFF1A1202)
+                            ),
+                            shape = RoundedCornerShape(14.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(48.dp)
+                                .testTag("btn_purchase_${selectedModel.id}")
+                        ) {
+                            Icon(imageVector = Icons.Default.Stars, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "UNLOCK & EQUIP • ${selectedModel.price} PTS",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Black,
+                                letterSpacing = 1.sp
+                            )
+                        }
+                    }
+                    else -> {
+                        Button(
+                            onClick = { },
+                            enabled = false,
+                            shape = RoundedCornerShape(14.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(48.dp)
+                        ) {
+                            Icon(imageVector = Icons.Default.Lock, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "LOCKED (${selectedModel.price} PTS • NEED ${selectedModel.price - walletPoints} MORE)",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // BONUS TEST GRANT BUTTON & CLOSE
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "+1,000 PTS (Practice Bonus)",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFFFFD54F),
+                        modifier = Modifier
+                            .clickable { viewModel.addBonusPoints(1000) }
+                            .padding(4.dp)
+                            .testTag("btn_add_practice_points")
+                    )
+
+                    OutlinedButton(
+                        onClick = onDismiss,
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.testTag("btn_close_hangar")
+                    ) {
+                        Text("CLOSE", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun StatMeter(
+    label: String,
+    value: Int,
+    max: Int,
+    accentColor: Color
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Text(
+            text = label,
+            fontSize = 10.sp,
+            color = Color(0xFFB0BEC5),
+            modifier = Modifier.width(95.dp)
+        )
+        LinearProgressIndicator(
+            progress = { (value.toFloat() / max.toFloat()).coerceIn(0f, 1f) },
+            modifier = Modifier
+                .weight(1f)
+                .height(6.dp)
+                .clip(RoundedCornerShape(3.dp)),
+            color = accentColor,
+            trackColor = Color(0x33FFFFFF)
+        )
+        Spacer(modifier = Modifier.width(8.dp))
+        Text(
+            text = "$value/$max",
+            fontSize = 10.sp,
+            fontWeight = FontWeight.Bold,
+            color = Color.White
         )
     }
 }
