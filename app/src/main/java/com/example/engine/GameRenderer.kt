@@ -1070,6 +1070,8 @@ class GameRenderer(val physics: GamePhysicsEngine) : GLSurfaceView.Renderer {
             matrixStack.rotate(p.tumbleRoll, 0f, 0f, 1f)
             matrixStack.rotate(p.tumbleYaw, 0f, 1f, 0f)
         } else {
+            // Dynamic body yaw into lateral direction
+            matrixStack.rotate(p.bodyYaw, 0f, 1f, 0f)
             // Dynamic lateral banking tilt
             matrixStack.rotate(p.steerBankTilt, 0f, 0f, 1f)
             // Aerodynamic forward lean
@@ -1810,23 +1812,17 @@ class GameRenderer(val physics: GamePhysicsEngine) : GLSurfaceView.Renderer {
         drawMesh(cubeMesh, floatArrayOf(0.09f, 0.10f, 0.12f, 1f))
         matrixStack.pop()
 
-        // Glowing Muzzle Ring
+        // Glowing Muzzle Ring (flashes bright white on shot with zero player obstruction)
+        val muzzleRingColor = if (p.muzzleFlashTimer > 0f) {
+            floatArrayOf(1.0f, 1.0f, 1.0f, 1f)
+        } else {
+            floatArrayOf(0.0f, 0.95f, 1.0f, 1f)
+        }
         matrixStack.push()
         matrixStack.translate(0f, 0.01f, -0.46f)
         matrixStack.scale(0.11f, 0.11f, 0.05f)
-        drawMesh(cubeMesh, floatArrayOf(0.0f, 0.95f, 1.0f, 1f), emissive = 1.0f)
+        drawMesh(cubeMesh, muzzleRingColor, emissive = 1.0f)
         matrixStack.pop()
-
-        // Dynamic Muzzle Flash Burst when firing
-        if (p.muzzleFlashTimer > 0f) {
-            val flashScale = 0.28f + (p.muzzleFlashTimer / 0.12f) * 0.22f
-            matrixStack.push()
-            matrixStack.translate(0f, 0.01f, -0.58f)
-            matrixStack.rotate(totalTime * 400f, 0f, 0f, 1f)
-            matrixStack.scale(flashScale, flashScale, flashScale * 1.6f)
-            drawMesh(cubeMesh, floatArrayOf(1.0f, 0.95f, 0.30f, 1f), emissive = 1.0f)
-            matrixStack.pop()
-        }
 
         matrixStack.pop() // End Blaster
 
@@ -1853,25 +1849,82 @@ class GameRenderer(val physics: GamePhysicsEngine) : GLSurfaceView.Renderer {
 
     private fun renderProjectiles() {
         val projs = physics.projectilePool
+        var anyActive = false
+        for (pr in projs) {
+            if (pr.isActive) {
+                anyActive = true
+                break
+            }
+        }
+        if (!anyActive) return
+
+        // 1. Render glowing bullet heads
         for (pr in projs) {
             if (!pr.isActive) continue
             matrixStack.push()
             matrixStack.translate(pr.position.x, pr.position.y, pr.position.z)
 
-            // Inner super-bright incandescent white/cyan energy core
+            // Inner super-bright incandescent white energy core
             matrixStack.push()
-            matrixStack.scale(pr.radius * 0.42f, pr.radius * 0.42f, 1.15f)
+            matrixStack.scale(pr.radius * 0.38f, pr.radius * 0.38f, 0.95f)
             drawMesh(cubeMesh, floatArrayOf(1.0f, 1.0f, 1.0f, 1.0f), emissive = 1.0f)
             matrixStack.pop()
 
-            // Outer radiant plasma bolt
+            // Outer radiant cyan plasma bolt
             matrixStack.push()
-            matrixStack.scale(pr.radius * 0.90f, pr.radius * 0.90f, 1.55f)
-            drawMesh(cubeMesh, pr.color, emissive = 0.95f)
+            matrixStack.scale(pr.radius * 0.75f, pr.radius * 0.75f, 1.45f)
+            drawMesh(cubeMesh, pr.color, emissive = 1.0f)
             matrixStack.pop()
 
             matrixStack.pop()
         }
+
+        // 2. Render sleek streamlined plasma trail streaming strictly behind each bullet
+        GLES20.glEnable(GLES20.GL_BLEND)
+        GLES20.glBlendFunc(GLES20.GL_SRC_ALPHA, GLES20.GL_ONE_MINUS_SRC_ALPHA)
+        GLES20.glDepthMask(false)
+
+        val trailSegments = listOf(
+            Triple(0.70f, 1.10f, 0.75f),  // (offsetZ behind bullet, segmentLength, alpha)
+            Triple(1.85f, 1.40f, 0.55f),
+            Triple(3.20f, 1.60f, 0.35f),
+            Triple(4.75f, 1.80f, 0.20f),
+            Triple(6.40f, 2.00f, 0.10f)
+        )
+
+        for (pr in projs) {
+            if (!pr.isActive) continue
+            val distTraveled = (pr.startZ - pr.position.z).coerceAtLeast(0f)
+            if (distTraveled <= 0.1f) continue
+
+            for (i in trailSegments.indices) {
+                val (offsetZ, baseLen, alpha) = trailSegments[i]
+                if (offsetZ - baseLen / 2f >= distTraveled) continue
+
+                // Clamp trail segment so it NEVER extends behind the firing muzzle / player
+                val clampedLen = minOf(baseLen, (distTraveled - (offsetZ - baseLen / 2f)).coerceAtLeast(0.1f))
+                val segZ = pr.position.z + offsetZ
+                if (segZ > pr.startZ) continue // Strictly forward of the firing point
+
+                val taper = 1.0f - (i.toFloat() / trailSegments.size.toFloat()) * 0.65f
+                val thickness = pr.radius * 0.55f * taper
+
+                matrixStack.push()
+                matrixStack.translate(pr.position.x, pr.position.y, segZ)
+                matrixStack.scale(thickness, thickness, clampedLen)
+                drawMesh(cubeMesh, floatArrayOf(0.0f, 0.95f, 1.0f, alpha), emissive = 0.95f)
+
+                // Thin luminous center core for the frontmost trail segment
+                if (i == 0) {
+                    matrixStack.scale(0.45f, 0.45f, 0.85f)
+                    drawMesh(cubeMesh, floatArrayOf(1.0f, 1.0f, 1.0f, alpha * 0.85f), emissive = 1.0f)
+                }
+                matrixStack.pop()
+            }
+        }
+
+        GLES20.glDepthMask(true)
+        GLES20.glDisable(GLES20.GL_BLEND)
     }
 
     private fun renderParticles() {

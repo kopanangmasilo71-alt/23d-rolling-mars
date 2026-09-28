@@ -103,6 +103,25 @@ class GamePhysicsEngine(
     var onShootFired: (() -> Unit)? = null
     var onBoulderDestroyed: (() -> Unit)? = null
     var onOutOfAmmo: (() -> Unit)? = null
+    var onThreatEscalation: ((DynamicThreatLevel) -> Unit)? = null
+
+    // Dynamic Difficulty Adjustment (DDA)
+    var currentThreatLevel: DynamicThreatLevel = DynamicDifficultyTiers.TIERS[0]
+    var maxThreatLevelReached: Int = 1
+
+    val runDuration: Float
+        get() = gameTime
+
+    val runDurationSeconds: Int
+        get() = gameTime.toInt()
+
+    // Gradual continuous speed scaling with run duration (+32% per 60s survived, capped at 2.15x)
+    val dynamicSpeedMultiplier: Float
+        get() = (1.0f + (gameTime / 60.0f) * 0.32f).coerceAtMost(2.15f)
+
+    // Gradual continuous frequency scaling with run duration (+38% per 60s survived, capped at 2.25x)
+    val dynamicFrequencyMultiplier: Float
+        get() = (1.0f + (gameTime / 60.0f) * 0.38f).coerceAtMost(2.25f)
 
     // Spawning control
     private var spawnTimer: Float = 0f
@@ -111,7 +130,6 @@ class GamePhysicsEngine(
     private var collectibleTimer: Float = 0f
     private var gameTime: Float = 0f
     private var crashTimer: Float = 0f
-    private var footstepTimer: Float = 0f
 
     init {
         generateInitialScenery()
@@ -202,7 +220,8 @@ class GamePhysicsEngine(
         speedPadTimer = 0f
         collectibleTimer = 0f
         crashTimer = 0f
-        footstepTimer = 0f
+        currentThreatLevel = DynamicDifficultyTiers.TIERS[0]
+        maxThreatLevelReached = 1
         nextSpawnInterval = if (isOverdriveMode) 1.4f else 2.0f
         isRunning = true
         isGameOver = false
@@ -256,9 +275,8 @@ class GamePhysicsEngine(
                     p.reset(gunX, gunY, gunZ)
 
                     audio.playLaserShot()
-                    particles.emitBurst(Vector3(gunX, gunY, gunZ), 8, floatArrayOf(0.0f, 0.95f, 1.0f))
                     player.isShooting = true
-                    player.muzzleFlashTimer = 0.12f
+                    player.muzzleFlashTimer = 0.08f
                     player.shootRecoil = 0.28f
 
                     // Tactile Screen Shake on Shot!
@@ -307,8 +325,9 @@ class GamePhysicsEngine(
         }
         player.isShooting = isShootHeld || shootCooldownTimer > 0.04f
 
-        // 1. Update Sector progression
+        // 1. Update Sector progression & Dynamic Threat progression
         checkSectorProgression()
+        checkThreatProgression()
 
         // 2. Update Combo Timer decay
         if (comboTimer > 0f) {
@@ -318,8 +337,9 @@ class GamePhysicsEngine(
             }
         }
 
-        // 3. Update Player
-        player.update(clampedDt, leftHeld, rightHeld, brakeHeld, roadHalfWidth)
+        // 3. World scroll multiplier and dynamic player update
+        val sectorSpeedMult = currentSector.speedMultiplier * (if (isOverdriveMode) 1.25f else 1.0f)
+        player.update(clampedDt, leftHeld, rightHeld, brakeHeld, roadHalfWidth, sectorSpeedMult)
 
         // Landing impact feel: compression, ground shockwave, sound, and camera dip
         if (player.justLanded) {
@@ -332,17 +352,13 @@ class GamePhysicsEngine(
             cameraShakeMagnitude = (cameraShakeMagnitude + 0.22f).coerceAtMost(0.45f)
         }
 
-        // Footstep dust generation while running on ground
-        if (player.isGrounded) {
-            footstepTimer += clampedDt * (player.forwardSpeed / player.baseNormalSpeed) * 12f
-            if (footstepTimer >= 3.14159f) {
-                footstepTimer -= 3.14159f
-                particles.emitDust(player.position, 3)
-            }
+        // Footstep dust generation precisely synchronized with athletic foot plants!
+        if (player.isGrounded && player.justStepped && !player.isShooting) {
+            val footX = player.position.x + (if (player.steppedLeftFoot) -0.15f else 0.15f)
+            particles.emitDust(Vector3(footX, 0.02f, player.position.z), 2)
         }
 
         // 4. Road scrolling & distance tracking
-        val sectorSpeedMult = currentSector.speedMultiplier * (if (isOverdriveMode) 1.25f else 1.0f)
         val forwardDelta = player.forwardSpeed * sectorSpeedMult * clampedDt
         distanceTraveled += forwardDelta
 
@@ -533,11 +549,6 @@ class GamePhysicsEngine(
         for (proj in projectilePool) {
             if (proj.isActive) {
                 proj.update(clampedDt)
-                proj.trailTimer += clampedDt
-                if (proj.trailTimer >= 0.035f) {
-                    proj.trailTimer = 0f
-                    particles.emitSpeedStreak(proj.position, 1, floatArrayOf(0.0f, 0.95f, 1.0f, 0.85f))
-                }
 
                 // Check collision with rolling boulders
                 for (ball in ballPool) {
@@ -741,6 +752,24 @@ class GamePhysicsEngine(
         }
     }
 
+    private fun checkThreatProgression() {
+        val tier = DynamicDifficultyTiers.getThreatForDuration(gameTime)
+        if (tier.level > currentThreatLevel.level) {
+            currentThreatLevel = tier
+            if (currentThreatLevel.level > maxThreatLevelReached) {
+                maxThreatLevelReached = currentThreatLevel.level
+            }
+            audio.playSectorAlert()
+            cameraShakeMagnitude = (cameraShakeMagnitude + 0.35f).coerceAtMost(0.6f)
+            onThreatEscalation?.invoke(currentThreatLevel)
+            onDodgeFeedback?.invoke(
+                "THREAT ESCALATION • LVL ${currentThreatLevel.level} ${currentThreatLevel.name}",
+                150 * currentThreatLevel.level,
+                comboMultiplier
+            )
+        }
+    }
+
     private fun onSuccessfulDodge() {
         // Boost combo
         comboTimer = maxComboTimer
@@ -848,7 +877,7 @@ class GamePhysicsEngine(
         val dist = distanceTraveled
         val overdriveFactor = if (isOverdriveMode) 1.25f else 1.0f
 
-        val baseSpeed = when {
+        val rawBaseSpeed = when {
             dist < 60f -> 6.5f + Random.nextFloat() * 1.5f
             dist < 180f -> 8.5f + Random.nextFloat() * 2.0f
             dist < 400f -> 10.5f + Random.nextFloat() * 2.5f
@@ -856,7 +885,10 @@ class GamePhysicsEngine(
             else -> 14.5f + Random.nextFloat() * 3.5f
         } * overdriveFactor
 
-        nextSpawnInterval = when {
+        // Dynamic Difficulty: boulder speed gradually increases with run duration
+        val baseSpeed = rawBaseSpeed * dynamicSpeedMultiplier
+
+        val rawInterval = when {
             dist < 60f -> 2.4f + Random.nextFloat() * 0.5f
             dist < 180f -> 1.9f + Random.nextFloat() * 0.4f
             dist < 400f -> 1.45f + Random.nextFloat() * 0.35f
@@ -864,32 +896,39 @@ class GamePhysicsEngine(
             else -> 0.90f + Random.nextFloat() * 0.22f
         } / (if (isOverdriveMode) 1.25f else 1.0f)
 
+        // Dynamic Difficulty: boulder frequency gradually increases with run duration
+        nextSpawnInterval = (rawInterval / dynamicFrequencyMultiplier).coerceAtLeast(0.48f)
+
         val spawnZ = -90f - Random.nextFloat() * 15f
         val roll = Random.nextFloat()
 
+        // As run duration increases, higher threat tiers also increase the mix of high-speed & zigzag hazards
+        val durationBonusRoll = (gameTime / 180.0f * 0.25f).coerceAtMost(0.30f)
+        val adjustedRoll = (roll + durationBonusRoll).coerceAtMost(0.99f)
+
         val type = when {
-            dist < 50f -> BallType.STRAIGHT
-            dist < 150f -> if (roll < 0.60f) BallType.STRAIGHT else if (roll < 0.80f) BallType.LEFT_TO_RIGHT else BallType.RIGHT_TO_LEFT
-            dist < 350f -> when {
-                roll < 0.35f -> BallType.STRAIGHT
-                roll < 0.55f -> BallType.LEFT_TO_RIGHT
-                roll < 0.75f -> BallType.RIGHT_TO_LEFT
-                roll < 0.90f -> BallType.FAST
+            dist < 50f && gameTime < 20f -> BallType.STRAIGHT
+            dist < 150f && gameTime < 45f -> if (adjustedRoll < 0.50f) BallType.STRAIGHT else if (adjustedRoll < 0.75f) BallType.LEFT_TO_RIGHT else BallType.RIGHT_TO_LEFT
+            dist < 350f || gameTime < 90f -> when {
+                adjustedRoll < 0.28f -> BallType.STRAIGHT
+                adjustedRoll < 0.50f -> BallType.LEFT_TO_RIGHT
+                adjustedRoll < 0.70f -> BallType.RIGHT_TO_LEFT
+                adjustedRoll < 0.88f -> BallType.FAST
                 else -> BallType.BOUNCING
             }
             else -> when {
-                roll < 0.20f -> BallType.STRAIGHT
-                roll < 0.40f -> BallType.LEFT_TO_RIGHT
-                roll < 0.60f -> BallType.RIGHT_TO_LEFT
-                roll < 0.76f -> BallType.FAST
-                roll < 0.90f -> BallType.GIANT
+                adjustedRoll < 0.15f -> BallType.STRAIGHT
+                adjustedRoll < 0.35f -> BallType.LEFT_TO_RIGHT
+                adjustedRoll < 0.55f -> BallType.RIGHT_TO_LEFT
+                adjustedRoll < 0.75f -> BallType.FAST
+                adjustedRoll < 0.90f -> BallType.GIANT
                 else -> BallType.BOUNCING
             }
         }
 
         val lateralSpeed = when (type) {
-            BallType.LEFT_TO_RIGHT -> Random.nextFloat() * 2.8f + 1.4f
-            BallType.RIGHT_TO_LEFT -> -(Random.nextFloat() * 2.8f + 1.4f)
+            BallType.LEFT_TO_RIGHT -> (Random.nextFloat() * 2.8f + 1.4f) * dynamicSpeedMultiplier.coerceAtMost(1.6f)
+            BallType.RIGHT_TO_LEFT -> -(Random.nextFloat() * 2.8f + 1.4f) * dynamicSpeedMultiplier.coerceAtMost(1.6f)
             else -> 0f
         }
 
@@ -902,9 +941,10 @@ class GamePhysicsEngine(
 
         spawnBall(type, spawnX, spawnZ, baseSpeed, lateralSpeed)
 
-        // Dynamic twin hazard waves in higher difficulty
-        val twinChance = if (isOverdriveMode) 0.50f else 0.30f
-        if (dist > 220f && Random.nextFloat() < twinChance) {
+        // Dynamic twin hazard waves in higher difficulty (scales with distance AND run duration)
+        val durationTwinBonus = (gameTime / 120.0f * 0.20f).coerceAtMost(0.25f)
+        val twinChance = ((if (isOverdriveMode) 0.50f else 0.30f) + durationTwinBonus).coerceAtMost(0.70f)
+        if ((dist > 220f || gameTime > 40f) && Random.nextFloat() < twinChance) {
             val otherX = if (spawnX < 0) spawnX + 5.2f else spawnX - 5.2f
             spawnBall(BallType.STRAIGHT, otherX, spawnZ - 12f, baseSpeed * 0.95f, 0f)
         }

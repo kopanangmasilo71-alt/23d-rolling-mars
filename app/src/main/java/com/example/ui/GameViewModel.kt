@@ -63,7 +63,13 @@ data class LiveGameStats(
     val orbsCollected: Int = 0,
     val maxOrbsForBoost: Int = 3,
     val ammo: Int = 10,
-    val maxAmmo: Int = 30
+    val maxAmmo: Int = 30,
+    val runDurationSeconds: Int = 0,
+    val dynamicSpeedMultiplier: Float = 1.0f,
+    val dynamicFrequencyMultiplier: Float = 1.0f,
+    val threatLevel: Int = 1,
+    val threatLevelName: String = "STABLE",
+    val threatLevelColorHex: Long = 0xFF00E5FF
 )
 
 data class GameOverSummary(
@@ -77,7 +83,9 @@ data class GameOverSummary(
     val performanceGrade: String = "B",
     val xpEarned: Int = 0,
     val pointsEarned: Int = 0,
-    val totalWalletPoints: Int = 0
+    val totalWalletPoints: Int = 0,
+    val runDurationSeconds: Int = 0,
+    val maxThreatLevelReached: Int = 1
 )
 
 class GameViewModel(application: Application) : AndroidViewModel(application) {
@@ -130,6 +138,9 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
     private val _timeOfDayAnnouncement = MutableStateFlow<String?>(null)
     val timeOfDayAnnouncement: StateFlow<String?> = _timeOfDayAnnouncement.asStateFlow()
     private var lastAnnouncedPhase: com.example.engine.TimeOfDayPhase? = null
+
+    private val _threatEscalationAnnouncement = MutableStateFlow<com.example.engine.DynamicThreatLevel?>(null)
+    val threatEscalationAnnouncement: StateFlow<com.example.engine.DynamicThreatLevel?> = _threatEscalationAnnouncement.asStateFlow()
 
     private val _screenShakeTrigger = MutableStateFlow(0L)
     val screenShakeTrigger: StateFlow<Long> = _screenShakeTrigger.asStateFlow()
@@ -264,6 +275,18 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
             triggerScreenShake(3.5f)
         }
 
+        physics.onThreatEscalation = { threat ->
+            _threatEscalationAnnouncement.value = threat
+            triggerHaptic(80, heavy = true)
+            triggerScreenShake(14.0f)
+            viewModelScope.launch {
+                delay(3200)
+                if (_threatEscalationAnnouncement.value?.level == threat.level) {
+                    _threatEscalationAnnouncement.value = null
+                }
+            }
+        }
+
         renderer = GameRenderer(physics)
     }
 
@@ -274,6 +297,7 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
     fun startGame() {
         _isNewHighScore.value = false
         _sectorAnnouncement.value = null
+        _threatEscalationAnnouncement.value = null
         _nearMissFlash.value = false
         _shieldDeflectedAlert.value = false
         _collectiblePickupAlert.value = null
@@ -450,7 +474,13 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
                 orbsCollected = physics.orbsCollected,
                 maxOrbsForBoost = physics.maxOrbsForBoost,
                 ammo = physics.player.ammo,
-                maxAmmo = physics.player.maxAmmo
+                maxAmmo = physics.player.maxAmmo,
+                runDurationSeconds = physics.runDurationSeconds,
+                dynamicSpeedMultiplier = physics.dynamicSpeedMultiplier,
+                dynamicFrequencyMultiplier = physics.dynamicFrequencyMultiplier,
+                threatLevel = physics.currentThreatLevel.level,
+                threatLevelName = physics.currentThreatLevel.name,
+                threatLevelColorHex = physics.currentThreatLevel.badgeColorHex
             )
         }
     }
@@ -501,7 +531,9 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
                 performanceGrade = grade,
                 xpEarned = xpEarned,
                 pointsEarned = pointsEarned,
-                totalWalletPoints = updatedProfile.totalPoints
+                totalWalletPoints = updatedProfile.totalPoints,
+                runDurationSeconds = physics.runDurationSeconds,
+                maxThreatLevelReached = physics.maxThreatLevelReached
             )
 
             repository.saveRecord(

@@ -1,6 +1,12 @@
 package com.example.ui
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
@@ -19,6 +25,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -89,6 +96,7 @@ fun MainMenu(
     val soundOn by viewModel.soundEnabled.collectAsStateWithLifecycle()
     val vibrationOn by viewModel.vibrationEnabled.collectAsStateWithLifecycle()
     val profile by viewModel.playerProfile.collectAsStateWithLifecycle()
+    val career by viewModel.careerStats.collectAsStateWithLifecycle()
 
     var showHowToPlay by remember { mutableStateOf(false) }
     var showHighScores by remember { mutableStateOf(false) }
@@ -99,35 +107,60 @@ fun MainMenu(
     val equippedModel = CharacterModelId.fromId(equippedId)
     val unlockedSet = (profile?.unlockedCharacterIds ?: "vanguard").split(",").map { it.trim().lowercase() }.toSet()
 
+    val infiniteTransition = rememberInfiniteTransition(label = "pulse")
+    val pulseGlow by infiniteTransition.animateFloat(
+        initialValue = 0.40f,
+        targetValue = 0.90f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1400, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "pulseGlow"
+    )
+
+    val primaryAccent = if (isOverdrive) Color(0xFFFF3D00) else Color(0xFF00E5FF)
+    val secondaryAccent = if (isOverdrive) Color(0xFFFF9100) else Color(0xFF00B0FF)
+    val accentGlow = if (isOverdrive) Color(0x66FF3D00) else Color(0x6600E5FF)
+
+    val modelAccentColor = when (equippedModel) {
+        CharacterModelId.TITAN -> Color(0xFFFF7043)
+        CharacterModelId.VALKYRIE -> Color(0xFF00E676)
+        CharacterModelId.PHANTOM -> Color(0xFFE040FB)
+        CharacterModelId.CHRONOS -> Color(0xFFFFD54F)
+        CharacterModelId.VANGUARD -> Color(0xFF00E5FF)
+    }
+
     Box(
         modifier = modifier
             .fillMaxSize()
             .background(
                 Brush.verticalGradient(
-                    listOf(
-                        Color(0xFF060B18),
-                        Color(0xFF0E162B),
-                        Color(0xFF121C38)
-                    )
+                    0.0f to Color(0xF4040916),
+                    0.18f to Color(0xDD070F24),
+                    0.46f to Color(0x66081228),
+                    0.74f to Color(0xDD050A1A),
+                    1.0f to Color(0xF8030610)
                 )
             )
             .statusBarsPadding()
             .navigationBarsPadding()
-            .padding(18.dp)
+            .padding(horizontal = 16.dp, vertical = 10.dp)
     ) {
-        // TOP BAR (High Score Chip & Wallet Chip & Settings Actions)
+        // TOP UTILITY BAR (High Score, Points Wallet, and Quick Controls)
         Row(
             modifier = Modifier
                 .align(Alignment.TopCenter)
-                .fillMaxWidth(),
+                .fillMaxWidth()
+                .widthIn(max = 520.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // High score chip & Wallet Points chip
+            // High score & Credits Wallet Chips
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                // High Score Pill
                 Surface(
                     shape = RoundedCornerShape(20.dp),
-                    color = Color(0x33FFD54F),
+                    color = Color(0x28FFD54F),
                     border = androidx.compose.foundation.BorderStroke(1.dp, Color(0x66FFD54F)),
                     modifier = Modifier
                         .clickable { showHighScores = true }
@@ -141,11 +174,11 @@ fun MainMenu(
                             imageVector = Icons.Default.EmojiEvents,
                             contentDescription = "Leaderboard",
                             tint = Color(0xFFFFD54F),
-                            modifier = Modifier.size(16.dp)
+                            modifier = Modifier.size(15.dp)
                         )
-                        Spacer(modifier = Modifier.width(4.dp))
+                        Spacer(modifier = Modifier.width(5.dp))
                         Text(
-                            text = if (topRecord != null) "${topRecord?.score}" else "TOP",
+                            text = if (topRecord != null) "${topRecord?.score}" else "TOP 0",
                             color = Color(0xFFFFD54F),
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Black
@@ -153,10 +186,10 @@ fun MainMenu(
                     }
                 }
 
-                // Points Wallet Chip (Clickable to open Character Hangar)
+                // Points Wallet Pill (Tappable to launch Hangar)
                 Surface(
                     shape = RoundedCornerShape(20.dp),
-                    color = Color(0x3300E5FF),
+                    color = Color(0x2800E5FF),
                     border = androidx.compose.foundation.BorderStroke(1.dp, Color(0x6600E5FF)),
                     modifier = Modifier
                         .clickable { showCharacterHangar = true }
@@ -170,9 +203,9 @@ fun MainMenu(
                             imageVector = Icons.Default.Stars,
                             contentDescription = "Credits",
                             tint = Color(0xFF00E5FF),
-                            modifier = Modifier.size(16.dp)
+                            modifier = Modifier.size(15.dp)
                         )
-                        Spacer(modifier = Modifier.width(4.dp))
+                        Spacer(modifier = Modifier.width(5.dp))
                         Text(
                             text = "$walletPoints PTS",
                             color = Color(0xFF00E5FF),
@@ -183,103 +216,143 @@ fun MainMenu(
                 }
             }
 
-            // Action Icons Row
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                IconButton(
-                    onClick = { showHowToPlay = true },
+            // Quick Actions Cluster
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                // How to play guide
+                Surface(
+                    shape = CircleShape,
+                    color = Color(0x22FFFFFF),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0x33FFFFFF)),
                     modifier = Modifier
                         .size(38.dp)
-                        .background(Color(0x33FFFFFF), CircleShape)
+                        .clickable { showHowToPlay = true }
                         .testTag("btn_how_to_play")
                 ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.HelpOutline,
-                        contentDescription = "How to play",
-                        tint = Color.White,
-                        modifier = Modifier.size(18.dp)
-                    )
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.HelpOutline,
+                            contentDescription = "How to play",
+                            tint = Color(0xEEFFFFFF),
+                            modifier = Modifier.size(17.dp)
+                        )
+                    }
                 }
 
-                IconButton(
-                    onClick = { viewModel.toggleSound() },
+                // Sound toggle
+                Surface(
+                    shape = CircleShape,
+                    color = if (soundOn) Color(0x2A00E5FF) else Color(0x22FFFFFF),
+                    border = androidx.compose.foundation.BorderStroke(
+                        1.dp,
+                        if (soundOn) Color(0x8800E5FF) else Color(0x33FFFFFF)
+                    ),
                     modifier = Modifier
                         .size(38.dp)
-                        .background(if (soundOn) Color(0x3300E5FF) else Color(0x33FFFFFF), CircleShape)
+                        .clickable { viewModel.toggleSound() }
                         .testTag("btn_toggle_sound")
                 ) {
-                    Icon(
-                        imageVector = if (soundOn) Icons.AutoMirrored.Filled.VolumeUp else Icons.AutoMirrored.Filled.VolumeMute,
-                        contentDescription = "Toggle sound",
-                        tint = if (soundOn) Color(0xFF00E5FF) else Color(0x88FFFFFF),
-                        modifier = Modifier.size(18.dp)
-                    )
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = if (soundOn) Icons.AutoMirrored.Filled.VolumeUp else Icons.AutoMirrored.Filled.VolumeMute,
+                            contentDescription = "Toggle sound",
+                            tint = if (soundOn) Color(0xFF00E5FF) else Color(0x77FFFFFF),
+                            modifier = Modifier.size(17.dp)
+                        )
+                    }
                 }
 
-                IconButton(
-                    onClick = { viewModel.toggleVibration() },
+                // Vibration toggle
+                Surface(
+                    shape = CircleShape,
+                    color = if (vibrationOn) Color(0x2A00E676) else Color(0x22FFFFFF),
+                    border = androidx.compose.foundation.BorderStroke(
+                        1.dp,
+                        if (vibrationOn) Color(0x8800E676) else Color(0x33FFFFFF)
+                    ),
                     modifier = Modifier
                         .size(38.dp)
-                        .background(if (vibrationOn) Color(0x3300E676) else Color(0x33FFFFFF), CircleShape)
+                        .clickable { viewModel.toggleVibration() }
                         .testTag("btn_toggle_vibration")
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Vibration,
-                        contentDescription = "Toggle vibration",
-                        tint = if (vibrationOn) Color(0xFF00E676) else Color(0x88FFFFFF),
-                        modifier = Modifier.size(18.dp)
-                    )
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = Icons.Default.Vibration,
+                            contentDescription = "Toggle vibration",
+                            tint = if (vibrationOn) Color(0xFF00E676) else Color(0x77FFFFFF),
+                            modifier = Modifier.size(17.dp)
+                        )
+                    }
                 }
             }
         }
 
-        // CENTER MAIN CONTENT
+        // CENTER MAIN CONTENT COLUMN
         Column(
             modifier = Modifier
                 .align(Alignment.Center)
-                .fillMaxWidth(),
+                .fillMaxWidth()
+                .widthIn(max = 480.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // Cyberpunk Game Logo
-            Text(
-                text = "ROLL",
-                fontSize = 42.sp,
-                fontWeight = FontWeight.Black,
-                letterSpacing = 4.sp,
-                color = Color.White
-            )
-            Text(
-                text = "RUNNER",
-                fontSize = 42.sp,
-                fontWeight = FontWeight.Black,
-                letterSpacing = 6.sp,
-                color = Color(0xFF00E5FF)
-            )
-
-            Spacer(modifier = Modifier.height(2.dp))
-
-            Surface(
-                shape = RoundedCornerShape(12.dp),
-                color = Color(0x2800E5FF),
-                border = androidx.compose.foundation.BorderStroke(0.5.dp, Color(0xFF00E5FF))
+            // Futuristic Game Logo Title
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center
             ) {
                 Text(
-                    text = "3D BOULDER SURVIVAL • MULTI-MODEL CHASSIS",
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 2.sp,
-                    color = Color(0xFF80D8FF),
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+                    text = "ROLL",
+                    fontSize = 38.sp,
+                    fontWeight = FontWeight.Black,
+                    letterSpacing = 4.sp,
+                    color = Color.White
+                )
+                Spacer(modifier = Modifier.width(10.dp))
+                Text(
+                    text = "RUNNER",
+                    fontSize = 38.sp,
+                    fontWeight = FontWeight.Black,
+                    letterSpacing = 5.sp,
+                    color = primaryAccent
                 )
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(2.dp))
+
+            // Subtitle Tag with pulsing accent dot
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = primaryAccent.copy(alpha = 0.12f),
+                border = androidx.compose.foundation.BorderStroke(1.dp, primaryAccent.copy(alpha = 0.45f))
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(6.dp)
+                            .clip(CircleShape)
+                            .background(primaryAccent.copy(alpha = pulseGlow))
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = if (isOverdrive) "⚡ OVERDRIVE ACTIVE • 2X SCORE MULTIPLIER" else "3D BOULDER SURVIVAL • SYSTEM V2.4",
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Black,
+                        letterSpacing = 1.5.sp,
+                        color = if (isOverdrive) Color(0xFFFFAB91) else Color(0xFF80D8FF)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
 
             // DIFFICULTY MODE SELECTOR (Standard vs Overdrive 2X)
             Surface(
                 shape = RoundedCornerShape(16.dp),
-                color = Color(0x22FFFFFF),
-                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0x33FFFFFF)),
-                modifier = Modifier.fillMaxWidth(0.88f)
+                color = Color(0x30101C36),
+                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0x44FFFFFF)),
+                modifier = Modifier.fillMaxWidth(0.92f)
             ) {
                 Row(
                     modifier = Modifier.padding(4.dp),
@@ -295,11 +368,11 @@ fun MainMenu(
                             .testTag("mode_standard")
                     ) {
                         Text(
-                            text = "STANDARD",
+                            text = "STANDARD (1X)",
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Black,
                             letterSpacing = 1.sp,
-                            color = if (!isOverdrive) Color(0xFF0A0E1A) else Color(0xFFB0BEC5),
+                            color = if (!isOverdrive) Color(0xFF070E1C) else Color(0xFF90A4AE),
                             textAlign = TextAlign.Center,
                             modifier = Modifier.padding(vertical = 8.dp)
                         )
@@ -338,99 +411,141 @@ fun MainMenu(
                 }
             }
 
-            Spacer(modifier = Modifier.height(18.dp))
+            Spacer(modifier = Modifier.height(14.dp))
 
-            // START RUN BUTTON
+            // HERO PLAY BUTTON
             Button(
                 onClick = { viewModel.startGame() },
                 modifier = Modifier
-                    .fillMaxWidth(0.88f)
-                    .height(56.dp)
+                    .fillMaxWidth(0.92f)
+                    .height(58.dp)
                     .testTag("btn_play_game"),
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = if (isOverdrive) Color(0xFFFF3D00) else Color(0xFF00E5FF),
-                    contentColor = if (isOverdrive) Color.White else Color(0xFF0A1020)
+                    containerColor = Color.Transparent,
+                    contentColor = Color.White
                 ),
-                shape = RoundedCornerShape(28.dp),
+                shape = RoundedCornerShape(18.dp),
+                border = androidx.compose.foundation.BorderStroke(1.5.dp, primaryAccent.copy(alpha = pulseGlow)),
                 elevation = ButtonDefaults.buttonElevation(defaultElevation = 8.dp)
             ) {
-                Icon(
-                    imageVector = Icons.Default.PlayArrow,
-                    contentDescription = null,
-                    modifier = Modifier.size(28.dp)
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = if (isOverdrive) "LAUNCH OVERDRIVE" else "START RUN",
-                    fontSize = 17.sp,
-                    fontWeight = FontWeight.Black,
-                    letterSpacing = 1.5.sp
-                )
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(
+                            Brush.horizontalGradient(
+                                listOf(primaryAccent, secondaryAccent)
+                            ),
+                            shape = RoundedCornerShape(18.dp)
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.PlayArrow,
+                            contentDescription = null,
+                            tint = if (isOverdrive) Color.White else Color(0xFF070E1C),
+                            modifier = Modifier.size(26.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Column(horizontalAlignment = Alignment.Start) {
+                            Text(
+                                text = if (isOverdrive) "LAUNCH OVERDRIVE" else "START RUN",
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Black,
+                                letterSpacing = 1.5.sp,
+                                color = if (isOverdrive) Color.White else Color(0xFF070E1C)
+                            )
+                            Text(
+                                text = if (isOverdrive) "2X SCORE & HIGH SPEED" else "READY FOR DEPLOYMENT",
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 0.5.sp,
+                                color = if (isOverdrive) Color(0xDDFFFFFF) else Color(0xCC070E1C)
+                            )
+                        }
+                    }
+                }
             }
 
-            Spacer(modifier = Modifier.height(18.dp))
+            Spacer(modifier = Modifier.height(14.dp))
 
-            // 3D PILOT ARMORY / CHASSIS CARD
+            // ACTIVE PILOT CHASSIS & ARMORY CARD
             Surface(
                 shape = RoundedCornerShape(18.dp),
-                color = Color(0x24101A36),
-                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0x4400E5FF)),
+                color = Color(0x380F1A35),
+                border = androidx.compose.foundation.BorderStroke(1.dp, modelAccentColor.copy(alpha = 0.5f)),
                 modifier = Modifier
-                    .fillMaxWidth(0.92f)
+                    .fillMaxWidth(0.94f)
                     .clickable { showCharacterHangar = true }
                     .testTag("card_pilot_hangar")
             ) {
                 Column(
-                    modifier = Modifier.padding(14.dp),
+                    modifier = Modifier.padding(12.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
+                    // Pilot Card Header
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Column {
-                            Text(
-                                text = "ACTIVE PILOT CHASSIS",
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold,
-                                letterSpacing = 1.5.sp,
-                                color = Color(0x99FFFFFF)
-                            )
-                            Text(
-                                text = equippedModel.displayName,
-                                fontSize = 16.sp,
-                                fontWeight = FontWeight.Black,
-                                color = when (equippedModel) {
-                                    CharacterModelId.TITAN -> Color(0xFFFF7043)
-                                    CharacterModelId.VALKYRIE -> Color(0xFF00E676)
-                                    CharacterModelId.PHANTOM -> Color(0xFFE040FB)
-                                    CharacterModelId.CHRONOS -> Color(0xFFFFD54F)
-                                    CharacterModelId.VANGUARD -> Color(0xFF00E5FF)
-                                }
-                            )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(34.dp)
+                                    .clip(CircleShape)
+                                    .background(modelAccentColor.copy(alpha = 0.25f))
+                                    .border(1.dp, modelAccentColor, CircleShape),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Person,
+                                    contentDescription = null,
+                                    tint = modelAccentColor,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Column {
+                                Text(
+                                    text = equippedModel.displayName,
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.Black,
+                                    color = modelAccentColor
+                                )
+                                Text(
+                                    text = equippedModel.title.uppercase(),
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    letterSpacing = 1.sp,
+                                    color = Color(0xAAFFFFFF)
+                                )
+                            }
                         }
 
-                        // Hangar Shop Button
+                        // Open Hangar button
                         Surface(
-                            shape = RoundedCornerShape(12.dp),
-                            color = Color(0x3300E5FF),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0x6600E5FF))
+                            shape = RoundedCornerShape(10.dp),
+                            color = Color(0x2800E5FF),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0x5500E5FF))
                         ) {
                             Row(
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.ShoppingBag,
                                     contentDescription = "Hangar Shop",
                                     tint = Color(0xFF00E5FF),
-                                    modifier = Modifier.size(14.dp)
+                                    modifier = Modifier.size(13.dp)
                                 )
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Text(
                                     text = "HANGAR",
-                                    fontSize = 11.sp,
+                                    fontSize = 10.sp,
                                     fontWeight = FontWeight.Black,
                                     color = Color(0xFF00E5FF)
                                 )
@@ -438,24 +553,47 @@ fun MainMenu(
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(6.dp))
+                    Spacer(modifier = Modifier.height(8.dp))
 
-                    Text(
-                        text = "${equippedModel.title} • ${equippedModel.perkName}: ${equippedModel.perkDescription}",
-                        fontSize = 11.sp,
-                        color = Color(0xFFB0BEC5),
-                        textAlign = TextAlign.Center,
-                        maxLines = 2
-                    )
-
-                    Spacer(modifier = Modifier.height(10.dp))
-
-                    // Quick Character Switch Carousel
+                    // Chassis Stat Ratings (Armor, Speed, Tech)
                     Row(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceAround,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        CharacterModelId.entries.forEach { model ->
+                        RatingIndicator(label = "ARMOR", rating = equippedModel.armorRating, accent = modelAccentColor)
+                        RatingIndicator(label = "SPEED", rating = equippedModel.speedRating, accent = modelAccentColor)
+                        RatingIndicator(label = "TECH", rating = equippedModel.techRating, accent = modelAccentColor)
+                    }
+
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    // Perk Badge
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = Color(0x22FFFFFF),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = "⚡ ${equippedModel.perkName}: ${equippedModel.perkDescription}",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = Color(0xFFCFD8DC),
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                            maxLines = 1
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // Quick Character Switch Carousel (LazyRow for zero clipping on all screen sizes)
+                    LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        items(CharacterModelId.entries) { model ->
                             val isSelected = equippedModel == model
                             val isUnlocked = unlockedSet.contains(model.id.lowercase())
                             val modelColor = when (model) {
@@ -468,10 +606,10 @@ fun MainMenu(
 
                             Surface(
                                 shape = RoundedCornerShape(10.dp),
-                                color = if (isSelected) modelColor.copy(alpha = 0.35f) else Color(0x22FFFFFF),
+                                color = if (isSelected) modelColor.copy(alpha = 0.32f) else Color(0x1AFFFFFF),
                                 border = androidx.compose.foundation.BorderStroke(
-                                    width = if (isSelected) 2.dp else 1.dp,
-                                    color = if (isSelected) modelColor else Color(0x33FFFFFF)
+                                    width = if (isSelected) 1.5.dp else 1.dp,
+                                    color = if (isSelected) modelColor else Color(0x25FFFFFF)
                                 ),
                                 modifier = Modifier
                                     .clickable {
@@ -484,12 +622,12 @@ fun MainMenu(
                                     .testTag("quick_select_${model.id}")
                             ) {
                                 Row(
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+                                    modifier = Modifier.padding(horizontal = 7.dp, vertical = 4.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Box(
                                         modifier = Modifier
-                                            .size(8.dp)
+                                            .size(7.dp)
                                             .clip(CircleShape)
                                             .background(modelColor)
                                     )
@@ -498,7 +636,7 @@ fun MainMenu(
                                         text = model.displayName.split(" ").first(),
                                         fontSize = 10.sp,
                                         fontWeight = if (isSelected) FontWeight.Black else FontWeight.Bold,
-                                        color = if (isSelected) Color.White else Color(0xCCFFFFFF)
+                                        color = if (isSelected) Color.White else Color(0xBBFFFFFF)
                                     )
                                     if (!isUnlocked) {
                                         Spacer(modifier = Modifier.width(3.dp))
@@ -506,7 +644,7 @@ fun MainMenu(
                                             imageVector = Icons.Default.Lock,
                                             contentDescription = "Locked",
                                             tint = Color(0xFFFFD54F),
-                                            modifier = Modifier.size(10.dp)
+                                            modifier = Modifier.size(9.dp)
                                         )
                                     }
                                 }
@@ -517,13 +655,86 @@ fun MainMenu(
             }
         }
 
-        // FOOTER INFO
-        Text(
-            text = "Custom 3D Geometries & Armor • Real-Time Combos • Near-Miss Reflexes",
-            fontSize = 10.sp,
-            color = Color(0x66FFFFFF),
-            modifier = Modifier.align(Alignment.BottomCenter)
-        )
+        // BOTTOM CAREER TELEMETRY STRIP & CONTROLS FOOTER
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .widthIn(max = 480.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            // Career Stats Telemetry Pod
+            Surface(
+                shape = RoundedCornerShape(14.dp),
+                color = Color(0x28060D1E),
+                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0x25FFFFFF)),
+                modifier = Modifier.fillMaxWidth(0.92f)
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                    horizontalArrangement = Arrangement.SpaceAround,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            text = "DISTANCE",
+                            fontSize = 8.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0x88FFFFFF)
+                        )
+                        Text(
+                            text = "${career.totalDistance}m",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Black,
+                            color = Color(0xFF80D8FF)
+                        )
+                    }
+
+                    Box(modifier = Modifier.width(1.dp).height(18.dp).background(Color(0x33FFFFFF)))
+
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            text = "DODGED",
+                            fontSize = 8.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0x88FFFFFF)
+                        )
+                        Text(
+                            text = "${career.totalDodged}",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Black,
+                            color = Color(0xFF00E676)
+                        )
+                    }
+
+                    Box(modifier = Modifier.width(1.dp).height(18.dp).background(Color(0x33FFFFFF)))
+
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            text = "BEST COMBO",
+                            fontSize = 8.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0x88FFFFFF)
+                        )
+                        Text(
+                            text = "${career.maxComboEver}x",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Black,
+                            color = Color(0xFFFFD54F)
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(4.dp))
+
+            Text(
+                text = "Touch Controls: Analog Steer • Jump & Brake • Plasma Blaster",
+                fontSize = 9.sp,
+                fontWeight = FontWeight.Medium,
+                color = Color(0x55FFFFFF)
+            )
+        }
     }
 
     // CHARACTER HANGAR & 3D ROSTER MODAL
@@ -594,6 +805,36 @@ fun MainMenu(
             viewModel = viewModel,
             onDismiss = { showHighScores = false }
         )
+    }
+}
+
+@Composable
+private fun RatingIndicator(
+    label: String,
+    rating: Int,
+    maxRating: Int = 5,
+    accent: Color
+) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            text = label,
+            fontSize = 9.sp,
+            fontWeight = FontWeight.Bold,
+            color = Color(0x99FFFFFF),
+            modifier = Modifier.width(36.dp)
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(2.5.dp)) {
+            for (i in 1..maxRating) {
+                Box(
+                    modifier = Modifier
+                        .size(width = 10.dp, height = 4.5.dp)
+                        .clip(RoundedCornerShape(1.5.dp))
+                        .background(
+                            if (i <= rating) accent else Color(0x28FFFFFF)
+                        )
+                )
+            }
+        }
     }
 }
 

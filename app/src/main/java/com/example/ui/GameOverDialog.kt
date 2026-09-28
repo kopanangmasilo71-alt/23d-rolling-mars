@@ -205,6 +205,10 @@ fun GameOverOverlay(
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         StatLine("Distance Traveled", "${summary.distanceMeters} m", Color(0xFF80D8FF))
+                        val mins = summary.runDurationSeconds / 60
+                        val secs = summary.runDurationSeconds % 60
+                        StatLine("Run Duration", String.format(java.util.Locale.US, "%02d:%02d", mins, secs), Color(0xFFFFD54F))
+                        StatLine("Max Threat Level", "LVL ${summary.maxThreatLevelReached}", Color(0xFFFF7043))
                         StatLine("Boulders Dodged", "${summary.ballsDodged}", Color(0xFF81C784))
                         StatLine("Max Combo Multiplier", "${summary.maxCombo}X", Color(0xFFFF80AB))
                         StatLine("Points Earned", "+${summary.pointsEarned} PTS", Color(0xFFFFD54F))

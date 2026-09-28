@@ -411,4 +411,85 @@ class ExampleUnitTest {
         assertTrue("onBoulderDestroyed callback should be invoked", boulderDestroyedCallbackFired)
         assertTrue("Screen shake should trigger on boulder destruction", physics.cameraShakeMagnitude > shakeBeforeImpact)
     }
+
+    @Test
+    fun physicsEngine_dynamicDifficulty_graduallyIncreasesSpeedAndFrequencyWithRunDuration() {
+        val audio = GameAudio().apply { isEnabled = false }
+        val physics = GamePhysicsEngine(audio) { _, _, _, _, _ -> }
+        physics.startNewGame()
+        physics.clearAllTrackEntities()
+        physics.player.activateShield(9999f)
+
+        // 1. Initial State at duration = 0
+        assertEquals(0f, physics.runDuration, 0.001f)
+        assertEquals(0, physics.runDurationSeconds)
+        assertEquals(1.0f, physics.dynamicSpeedMultiplier, 0.001f)
+        assertEquals(1.0f, physics.dynamicFrequencyMultiplier, 0.001f)
+        assertEquals(1, physics.currentThreatLevel.level)
+        assertEquals("STABLE", physics.currentThreatLevel.name)
+
+        var threatEscalationCalled = false
+        physics.onThreatEscalation = { threat ->
+            threatEscalationCalled = true
+        }
+
+        // 2. Advance run duration to 30 seconds (600 steps of 0.05s)
+        val initialSpeedMult = physics.dynamicSpeedMultiplier
+        val initialFreqMult = physics.dynamicFrequencyMultiplier
+
+        for (i in 0 until 620) {
+            physics.player.invincibleGraceTimer = 10f
+            physics.update(dt = 0.05f, leftHeld = false, rightHeld = false, brakeHeld = false)
+        }
+
+        assertTrue("Run duration should be >= 30s", physics.runDuration >= 30f)
+        assertTrue("Speed multiplier should increase after 30s", physics.dynamicSpeedMultiplier > initialSpeedMult)
+        assertTrue("Frequency multiplier should increase after 30s", physics.dynamicFrequencyMultiplier > initialFreqMult)
+        assertTrue("Threat level callback should have fired for elevated danger", threatEscalationCalled)
+        assertEquals(2, physics.currentThreatLevel.level)
+        assertEquals("ELEVATED", physics.currentThreatLevel.name)
+
+        // 3. Advance run duration to 60+ seconds (Threat Level 3: INTENSE)
+        threatEscalationCalled = false
+        for (i in 0 until 650) {
+            physics.player.invincibleGraceTimer = 10f
+            physics.update(dt = 0.05f, leftHeld = false, rightHeld = false, brakeHeld = false)
+        }
+
+        assertTrue("Run duration should be >= 60s", physics.runDuration >= 60f)
+        assertTrue("Threat escalation should have fired for Level 3", threatEscalationCalled)
+        assertEquals(3, physics.currentThreatLevel.level)
+        assertEquals("INTENSE", physics.currentThreatLevel.name)
+        assertTrue("Speed multiplier at 60s should be higher than at 30s", physics.dynamicSpeedMultiplier > 1.30f)
+        assertTrue("Frequency multiplier at 60s should be higher than at 30s", physics.dynamicFrequencyMultiplier > 1.35f)
+    }
+
+    @Test
+    fun physicsEngine_dynamicDifficulty_spawnsFasterBouldersAtHighDuration() {
+        val audio = GameAudio().apply { isEnabled = false }
+        val physics = GamePhysicsEngine(audio) { _, _, _, _, _ -> }
+
+        // Start game and measure first wave boulder speed
+        physics.startNewGame()
+        physics.clearAllTrackEntities()
+        val speedAtStart = physics.dynamicSpeedMultiplier
+
+        // Advance game time to 120 seconds (2450 steps of 0.05s)
+        for (i in 0 until 2450) {
+            physics.player.invincibleGraceTimer = 10f
+            physics.update(dt = 0.05f, leftHeld = false, rightHeld = false, brakeHeld = false)
+        }
+
+        val speedAt120s = physics.dynamicSpeedMultiplier
+        assertTrue("Dynamic speed multiplier at 120s must be significantly higher than at start", speedAt120s >= speedAtStart * 1.5f)
+        assertEquals(4, physics.currentThreatLevel.level) // SEVERE
+        assertEquals("SEVERE", physics.currentThreatLevel.name)
+
+        // Also verify tier helper mappings
+        assertEquals(1, com.example.engine.DynamicDifficultyTiers.getThreatForDuration(10f).level)
+        assertEquals(2, com.example.engine.DynamicDifficultyTiers.getThreatForDuration(30f).level)
+        assertEquals(3, com.example.engine.DynamicDifficultyTiers.getThreatForDuration(65f).level)
+        assertEquals(4, com.example.engine.DynamicDifficultyTiers.getThreatForDuration(105f).level)
+        assertEquals(5, com.example.engine.DynamicDifficultyTiers.getThreatForDuration(160f).level)
+    }
 }

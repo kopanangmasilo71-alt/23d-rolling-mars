@@ -2,6 +2,7 @@ package com.example.engine
 
 import kotlin.math.PI
 import kotlin.math.abs
+import kotlin.math.cos
 import kotlin.math.sin
 
 data class SectorInfo(
@@ -15,6 +16,76 @@ data class SectorInfo(
     val ambientColor: FloatArray,
     val lightColor: FloatArray
 )
+
+data class DynamicThreatLevel(
+    val level: Int,
+    val name: String,
+    val minDurationSec: Float,
+    val speedMultiplierBonus: Float,
+    val frequencyMultiplierBonus: Float,
+    val badgeColorHex: Long,
+    val description: String
+)
+
+object DynamicDifficultyTiers {
+    val TIERS = listOf(
+        DynamicThreatLevel(
+            level = 1,
+            name = "STABLE",
+            minDurationSec = 0f,
+            speedMultiplierBonus = 1.0f,
+            frequencyMultiplierBonus = 1.0f,
+            badgeColorHex = 0xFF00E5FF,
+            description = "Standard hazard velocity"
+        ),
+        DynamicThreatLevel(
+            level = 2,
+            name = "ELEVATED",
+            minDurationSec = 25f,
+            speedMultiplierBonus = 1.15f,
+            frequencyMultiplierBonus = 1.20f,
+            badgeColorHex = 0xFF00E676,
+            description = "Boulders accelerating & denser waves"
+        ),
+        DynamicThreatLevel(
+            level = 3,
+            name = "INTENSE",
+            minDurationSec = 55f,
+            speedMultiplierBonus = 1.32f,
+            frequencyMultiplierBonus = 1.45f,
+            badgeColorHex = 0xFFFFD54F,
+            description = "High-velocity hazard surge"
+        ),
+        DynamicThreatLevel(
+            level = 4,
+            name = "SEVERE",
+            minDurationSec = 95f,
+            speedMultiplierBonus = 1.55f,
+            frequencyMultiplierBonus = 1.75f,
+            badgeColorHex = 0xFFFF7043,
+            description = "Rapid barrage of rolling boulders"
+        ),
+        DynamicThreatLevel(
+            level = 5,
+            name = "OVERLOAD",
+            minDurationSec = 145f,
+            speedMultiplierBonus = 1.85f,
+            frequencyMultiplierBonus = 2.10f,
+            badgeColorHex = 0xFFFF1744,
+            description = "Apex velocity & relentless boulder assault"
+        )
+    )
+
+    fun getThreatForDuration(durationSec: Float): DynamicThreatLevel {
+        var current = TIERS[0]
+        for (tier in TIERS) {
+            if (durationSec >= tier.minDurationSec) {
+                current = tier
+            }
+        }
+        return current
+    }
+}
 
 class SpeedPad(val id: Int) {
     var isActive: Boolean = false
@@ -301,7 +372,7 @@ class PlayerCharacter {
     var isShooting: Boolean = false
     var shootRecoil: Float = 0f
     var muzzleFlashTimer: Float = 0f
-    var ammo: Int = 6
+    var ammo: Int = 10
     val maxAmmo: Int = 30
     var emptyClickTimer: Float = 0f
 
@@ -347,7 +418,11 @@ class PlayerCharacter {
     var torsoTwist: Float = 0f
     var bodyBobOffset: Float = 0f
     var steerBankTilt: Float = 0f
+    var bodyYaw: Float = 0f
     var headPitch: Float = 0f
+    var justStepped: Boolean = false
+    var steppedLeftFoot: Boolean = false
+    private var lastStepIndex: Int = 0
 
     // Realistic Anatomical Proportions (Dynamic per character model)
     var headSize: Float = 0.40f
@@ -444,8 +519,12 @@ class PlayerCharacter {
         torsoTwist = 0f
         bodyBobOffset = 0f
         steerBankTilt = 0f
+        bodyYaw = 0f
         headPitch = 0f
-        ammo = 6
+        justStepped = false
+        steppedLeftFoot = false
+        lastStepIndex = 0
+        ammo = 10
         emptyClickTimer = 0f
         isShooting = false
         shootRecoil = 0f
@@ -599,7 +678,8 @@ class PlayerCharacter {
         leftHeld: Boolean,
         rightHeld: Boolean,
         brakeHeld: Boolean,
-        roadHalfWidth: Float
+        roadHalfWidth: Float,
+        effectiveWorldSpeedMult: Float = 1.0f
     ) {
         if (isTumbling) {
             tumblePitch += 380f * dt
@@ -635,40 +715,38 @@ class PlayerCharacter {
         // Forward speed adjustment based on brake input & turbo boost
         val boostBonus = if (isBoosting) 5.5f else 0f
         val targetForwardSpeed = if (brakeHeld) minBrakedSpeed else (baseNormalSpeed + boostBonus)
-        val accelRate = if (targetForwardSpeed > forwardSpeed) 10.5f else 16.0f
+        val accelRate = if (targetForwardSpeed > forwardSpeed) 12.0f else 18.0f
         forwardSpeed += (targetForwardSpeed - forwardSpeed) * (accelRate * dt).coerceAtMost(1f)
 
-        // Horizontal velocity calculation with momentum and analog steering feel
+        // Effective ground speed relative to road (combines forward speed and sector/overdrive multiplier)
+        val effectiveForwardSpeed = forwardSpeed * effectiveWorldSpeedMult
+
+        // Smooth analog lateral steering with velocity-synchronized agility
         val targetInput = when {
             leftHeld && !rightHeld -> -1f
             rightHeld && !leftHeld -> 1f
             else -> 0f
         }
 
-        if (targetInput != 0f) {
-            val targetVel = targetInput * maxHorizontalSpeed
-            if (targetInput > 0f) {
-                horizontalVelocity = (horizontalVelocity + horizontalAcceleration * dt).coerceAtMost(targetVel)
-            } else {
-                horizontalVelocity = (horizontalVelocity - horizontalAcceleration * dt).coerceAtLeast(targetVel)
-            }
-        } else {
-            if (horizontalVelocity > 0f) {
-                horizontalVelocity = (horizontalVelocity - horizontalDeceleration * dt).coerceAtLeast(0f)
-            } else if (horizontalVelocity < 0f) {
-                horizontalVelocity = (horizontalVelocity + horizontalDeceleration * dt).coerceAtMost(0f)
-            }
-        }
+        // Lateral speed scales smoothly with forward speed so steering feels equally responsive at hyper sprint
+        val speedFactor = (effectiveForwardSpeed / baseNormalSpeed).coerceIn(0.65f, 2.0f)
+        val dynamicMaxHorizontalSpeed = maxHorizontalSpeed * (0.80f + 0.28f * speedFactor)
+        val targetHorizontalVelocity = targetInput * dynamicMaxHorizontalSpeed
+
+        // Smooth critically damped acceleration and deceleration (no jarring linear snap)
+        val steerResponseRate = if (targetInput != 0f) 18.0f else 22.0f
+        horizontalVelocity += (targetHorizontalVelocity - horizontalVelocity) * (steerResponseRate * dt).coerceAtMost(1f)
 
         position.x += horizontalVelocity * dt
 
+        // Elastic soft-cushion road boundaries
         val playableMargin = roadHalfWidth - 0.7f
         if (position.x > playableMargin) {
             position.x = playableMargin
-            horizontalVelocity = 0f
+            horizontalVelocity = (horizontalVelocity * 0.2f).coerceAtMost(0f)
         } else if (position.x < -playableMargin) {
             position.x = -playableMargin
-            horizontalVelocity = 0f
+            horizontalVelocity = (horizontalVelocity * 0.2f).coerceAtLeast(0f)
         }
 
         justLanded = false
@@ -696,14 +774,32 @@ class PlayerCharacter {
             nearMissTilt += (0f - nearMissTilt) * (8f * dt).coerceAtMost(1f)
         }
 
-        // Realistic Procedural Running Biomechanics
-        val strideRate = (forwardSpeed / baseNormalSpeed) * 12.0f
-        runAnimationTime += dt * strideRate
+        // Realistic Step & Biomechanical Animation Synchronized with Exact Road Movement
+        // Realistic step length: One 2-step stride cycle covers 2.44m of ground
+        // Therefore angular velocity dθ/dt = (π / 1.22) * effectiveForwardSpeed ≈ 2.575 * effectiveForwardSpeed
+        // Foot motion relative to body matches road scroll rate -> ZERO FOOT SLIDING!
+        val stepStrideDist = 1.22f // Distance covered per single step in meters
+        val angularStrideRate = (Math.PI.toFloat() / stepStrideDist) * effectiveForwardSpeed
+        runAnimationTime += dt * angularStrideRate
+
+        // Detect footstep plants for synchronized dust puffs and tactile feel
+        justStepped = false
+        if (isGrounded) {
+            val currentStepIndex = (runAnimationTime / Math.PI.toFloat()).toInt()
+            if (currentStepIndex != lastStepIndex) {
+                lastStepIndex = currentStepIndex
+                justStepped = true
+                steppedLeftFoot = (currentStepIndex % 2 == 0)
+            }
+        }
+
         val strideSin = sin(runAnimationTime)
 
         if (isGrounded) {
-            limbSwingAngle = strideSin * 38f
-            thighSwingLeft = strideSin * 36f
+            // Stride amplitude opens up naturally as forward speed increases
+            val strideAmplitude = 34f + (effectiveForwardSpeed / baseNormalSpeed).coerceIn(0.5f, 2.2f) * 6.5f
+            limbSwingAngle = strideSin * strideAmplitude
+            thighSwingLeft = strideSin * strideAmplitude
             thighSwingRight = -thighSwingLeft
 
             // Dynamic Knee Flexion: knee bends as thigh swings back into trailing step
@@ -718,8 +814,12 @@ class PlayerCharacter {
             elbowBendLeft = 76f + strideSin * 10f
             elbowBendRight = 76f - strideSin * 10f
 
-            torsoTwist = -strideSin * 7f
-            bodyBobOffset = (abs(sin(runAnimationTime * 2f)) * 0.08f) - landingSquash * 0.35f
+            torsoTwist = -strideSin * 6.5f
+
+            // Natural 2-beat vertical body bob: dips as foot plants mid-stance, pushes up into flight apex
+            val bobAmplitude = 0.045f + (effectiveForwardSpeed / baseNormalSpeed).coerceIn(0.5f, 2.0f) * 0.025f
+            val verticalStrideBounce = -cos(runAnimationTime * 2f) * bobAmplitude
+            bodyBobOffset = verticalStrideBounce - landingSquash * 0.35f
         } else {
             // Mid-air Jump Pose (Athletic hurdle tuck & reach)
             thighSwingLeft = 35f
@@ -750,12 +850,17 @@ class PlayerCharacter {
             shootRecoil = (shootRecoil - dt * 2.8f).coerceAtLeast(0f)
         }
 
-        // Aerodynamic forward lean scales with speed
-        headPitch = 6f + (forwardSpeed / baseNormalSpeed) * 6f
+        // Aerodynamic forward lean scales smoothly with speed
+        val targetPitch = 4f + (effectiveForwardSpeed / baseNormalSpeed).coerceIn(0.5f, 2.2f) * 5.5f
+        headPitch += (targetPitch - headPitch) * (12f * dt).coerceAtMost(1f)
 
         // Banking lean into lateral turns + near-miss dynamic dodge evasion
-        val targetTilt = (-horizontalVelocity / maxHorizontalSpeed) * 16f + nearMissTilt
-        steerBankTilt += (targetTilt - steerBankTilt) * (14f * dt).coerceAtMost(1f)
+        val targetTilt = (-horizontalVelocity / dynamicMaxHorizontalSpeed) * 16f + nearMissTilt
+        steerBankTilt += (targetTilt - steerBankTilt) * (15f * dt).coerceAtMost(1f)
+
+        // Athletic body yaw: character turns slightly into the direction of lateral movement
+        val targetYaw = (-horizontalVelocity / dynamicMaxHorizontalSpeed) * 12f
+        bodyYaw += (targetYaw - bodyYaw) * (18f * dt).coerceAtMost(1f)
     }
 }
 
@@ -763,15 +868,17 @@ class Projectile(val id: Int) {
     var isActive: Boolean = false
     val position = Vector3()
     val velocity = Vector3(0f, 0f, -54f)
+    var startZ: Float = 0f
     var lifetime: Float = 0f
     val maxLifetime: Float = 1.3f
-    val radius: Float = 0.45f
+    val radius: Float = 0.35f
     val color = floatArrayOf(0.0f, 0.95f, 1.0f, 1.0f)
     var trailTimer: Float = 0f
 
     fun reset(x: Float, y: Float, z: Float) {
         position.set(x, y, z)
         velocity.set(0f, 0f, -54f)
+        startZ = z
         isActive = true
         lifetime = maxLifetime
         trailTimer = 0f

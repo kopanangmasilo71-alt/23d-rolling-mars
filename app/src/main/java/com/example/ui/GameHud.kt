@@ -38,6 +38,8 @@ import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Stars
+import androidx.compose.material.icons.filled.Timer
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -75,6 +77,7 @@ fun GameHud(
 
     val stats by viewModel.liveStats.collectAsStateWithLifecycle()
     val sectorAlert by viewModel.sectorAnnouncement.collectAsStateWithLifecycle()
+    val threatAlert by viewModel.threatEscalationAnnouncement.collectAsStateWithLifecycle()
     val timeOfDayAlert by viewModel.timeOfDayAnnouncement.collectAsStateWithLifecycle()
     val nearMissFlash by viewModel.nearMissFlash.collectAsStateWithLifecycle()
     val shieldDeflected by viewModel.shieldDeflectedAlert.collectAsStateWithLifecycle()
@@ -178,6 +181,55 @@ fun GameHud(
                             fontWeight = FontWeight.ExtraBold,
                             color = Color.White
                         )
+                    }
+                }
+            }
+        }
+
+        // DYNAMIC THREAT LEVEL ESCALATION BANNER
+        AnimatedVisibility(
+            visible = threatAlert != null,
+            enter = scaleIn(tween(180)) + fadeIn(),
+            exit = scaleOut(tween(250)) + fadeOut(),
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .padding(top = 110.dp)
+        ) {
+            threatAlert?.let { threat ->
+                val badgeColor = Color(threat.badgeColorHex)
+                Surface(
+                    shape = RoundedCornerShape(18.dp),
+                    color = Color(0xF21C0A0A),
+                    border = androidx.compose.foundation.BorderStroke(1.8.dp, badgeColor),
+                    shadowElevation = 16.dp,
+                    modifier = Modifier.padding(horizontal = 20.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(horizontal = 18.dp, vertical = 10.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Warning,
+                            contentDescription = "Threat Escalation",
+                            tint = badgeColor,
+                            modifier = Modifier.size(28.dp)
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column {
+                            Text(
+                                text = "THREAT ESCALATION • LVL ${threat.level}: ${threat.name}",
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Black,
+                                color = badgeColor,
+                                letterSpacing = 1.sp
+                            )
+                            Text(
+                                text = "${threat.description} (BOULDERS FASTER & DENSER)",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = Color.White
+                            )
+                        }
                     }
                 }
             }
@@ -503,7 +555,8 @@ private fun TopHudBar(
                         Surface(
                             shape = RoundedCornerShape(8.dp),
                             color = Color(0x44FF3D00),
-                            border = androidx.compose.foundation.BorderStroke(0.5.dp, Color(0xFFFF3D00))
+                            border = androidx.compose.foundation.BorderStroke(0.5.dp, Color(0xFFFF3D00)),
+                            modifier = Modifier.padding(end = 6.dp)
                         ) {
                             Text(
                                 text = "OVERDRIVE 2X",
@@ -514,10 +567,66 @@ private fun TopHudBar(
                             )
                         }
                     }
+
+                    // Dynamic Threat Level / Speed Multiplier Badge
+                    val threatColor = Color(stats.threatLevelColorHex)
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = threatColor.copy(alpha = 0.22f),
+                        border = androidx.compose.foundation.BorderStroke(0.8.dp, threatColor),
+                        modifier = Modifier.padding(end = 6.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Warning,
+                                contentDescription = "Threat Level",
+                                tint = threatColor,
+                                modifier = Modifier.size(11.dp)
+                            )
+                            Spacer(modifier = Modifier.width(3.dp))
+                            Text(
+                                text = "LVL ${stats.threatLevel} • ${String.format(java.util.Locale.US, "%.1fx", stats.dynamicSpeedMultiplier)}",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Black,
+                                color = threatColor
+                            )
+                        }
+                    }
                 }
 
-                // Speed / Turbo Status
+                // Speed / Turbo Status & Run Duration
                 Row(verticalAlignment = Alignment.CenterVertically) {
+                    // Run Duration Timer Pill
+                    val mins = stats.runDurationSeconds / 60
+                    val secs = stats.runDurationSeconds % 60
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = Color(0x22FFFFFF),
+                        border = androidx.compose.foundation.BorderStroke(0.6.dp, Color(0x44FFFFFF)),
+                        modifier = Modifier.padding(end = 6.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.5.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Timer,
+                                contentDescription = "Duration",
+                                tint = Color(0xFFCFD8DC),
+                                modifier = Modifier.size(11.dp)
+                            )
+                            Spacer(modifier = Modifier.width(3.dp))
+                            Text(
+                                text = String.format(java.util.Locale.US, "%02d:%02d", mins, secs),
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
+                        }
+                    }
                     if (stats.isBoosting) {
                         Surface(
                             shape = RoundedCornerShape(8.dp),
