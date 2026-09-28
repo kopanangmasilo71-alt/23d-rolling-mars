@@ -313,6 +313,10 @@ fun PauseOverlay(
     viewModel: GameViewModel,
     modifier: Modifier = Modifier
 ) {
+    var showSettingsModal by remember { mutableStateOf(false) }
+    val soundOn by viewModel.soundEnabled.collectAsStateWithLifecycle()
+    val vibrationOn by viewModel.vibrationEnabled.collectAsStateWithLifecycle()
+
     Box(
         modifier = modifier
             .fillMaxSize()
@@ -321,89 +325,150 @@ fun PauseOverlay(
     ) {
         Card(
             shape = RoundedCornerShape(28.dp),
-            colors = CardDefaults.cardColors(containerColor = Color(0xF210162B)),
+            colors = CardDefaults.cardColors(containerColor = Color(0xF20F1626)),
             border = androidx.compose.foundation.BorderStroke(1.5.dp, Color(0xFF00E5FF)),
-            elevation = CardDefaults.cardElevation(defaultElevation = 16.dp),
+            elevation = CardDefaults.cardElevation(defaultElevation = 20.dp),
             modifier = Modifier
-                .fillMaxWidth(0.85f)
+                .fillMaxWidth(0.82f)
                 .padding(16.dp)
         ) {
             Column(
-                modifier = Modifier.padding(24.dp),
+                modifier = Modifier.padding(horizontal = 24.dp, vertical = 28.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text(
-                    text = "RUN PAUSED",
-                    fontSize = 24.sp,
+                    text = "PAUSED",
+                    fontSize = 26.sp,
                     fontWeight = FontWeight.Black,
-                    color = Color(0xFF00E5FF),
-                    letterSpacing = 2.sp
-                )
-                Text(
-                    text = "TACTICAL BREAK",
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color(0xFFB0BEC5),
-                    letterSpacing = 1.sp
+                    color = Color.White,
+                    letterSpacing = 3.sp
                 )
 
                 Spacer(modifier = Modifier.height(24.dp))
 
-                // Resume Button
+                // 1. RESUME Button (Vibrant Emerald Green)
                 Button(
                     onClick = { viewModel.resumeGame() },
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFF00E5FF),
-                        contentColor = Color(0xFF0A0E1A)
+                        containerColor = Color(0xFF00E676),
+                        contentColor = Color(0xFF04210D)
                     ),
-                    shape = RoundedCornerShape(14.dp),
+                    shape = RoundedCornerShape(24.dp),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(50.dp)
+                        .height(52.dp)
                         .testTag("resume_button")
                 ) {
                     Text(
-                        text = "RESUME RUN",
+                        text = "RESUME",
                         fontSize = 15.sp,
                         fontWeight = FontWeight.Black,
-                        letterSpacing = 1.sp
+                        letterSpacing = 1.5.sp
                     )
                 }
 
-                Spacer(modifier = Modifier.height(10.dp))
+                Spacer(modifier = Modifier.height(12.dp))
 
-                // Restart Button
-                OutlinedButton(
+                // 2. RESTART Button (Vibrant Electric Blue)
+                Button(
                     onClick = { viewModel.restartGame() },
-                    shape = RoundedCornerShape(14.dp),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF78909C)),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFF2979FF),
+                        contentColor = Color.White
+                    ),
+                    shape = RoundedCornerShape(24.dp),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(48.dp)
+                        .height(52.dp)
                         .testTag("pause_restart_button")
                 ) {
-                    Icon(imageVector = Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("RESTART", fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                    Text(
+                        text = "RESTART",
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Black,
+                        letterSpacing = 1.5.sp
+                    )
                 }
 
-                Spacer(modifier = Modifier.height(10.dp))
+                Spacer(modifier = Modifier.height(12.dp))
 
-                // Menu Button
-                OutlinedButton(
-                    onClick = { viewModel.goToMenu() },
-                    shape = RoundedCornerShape(14.dp),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF78909C)),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
+                // 3. SETTINGS Button (Sleek Slate Blue)
+                Button(
+                    onClick = { showSettingsModal = !showSettingsModal },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFF455A64),
+                        contentColor = Color.White
+                    ),
+                    shape = RoundedCornerShape(24.dp),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(48.dp)
+                        .height(52.dp)
+                        .testTag("pause_settings_button")
+                ) {
+                    Text(
+                        text = "SETTINGS",
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Black,
+                        letterSpacing = 1.5.sp
+                    )
+                }
+
+                // Inline quick toggles if settings expanded
+                if (showSettingsModal) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Surface(
+                        shape = RoundedCornerShape(16.dp),
+                        color = Color(0x66000000),
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text("SFX Audio", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                androidx.compose.material3.Switch(
+                                    checked = soundOn,
+                                    onCheckedChange = { viewModel.toggleSound() }
+                                )
+                            }
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text("Haptic Feedback", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                androidx.compose.material3.Switch(
+                                    checked = vibrationOn,
+                                    onCheckedChange = { viewModel.toggleVibration() }
+                                )
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // 4. EXIT Button (Vibrant Coral Red)
+                Button(
+                    onClick = { viewModel.goToMenu() },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFFFF5252),
+                        contentColor = Color.White
+                    ),
+                    shape = RoundedCornerShape(24.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(52.dp)
                         .testTag("pause_menu_button")
                 ) {
-                    Icon(imageVector = Icons.Default.Home, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("MAIN MENU", fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                    Text(
+                        text = "EXIT",
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Black,
+                        letterSpacing = 1.5.sp
+                    )
                 }
             }
         }

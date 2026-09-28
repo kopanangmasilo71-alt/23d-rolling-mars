@@ -13,6 +13,7 @@ class GameRenderer(val physics: GamePhysicsEngine) : GLSurfaceView.Renderer {
     @Volatile var isLeftHeld: Boolean = false
     @Volatile var isRightHeld: Boolean = false
     @Volatile var isBrakeHeld: Boolean = false
+    @Volatile var isShootHeld: Boolean = false
 
     private var programId = 0
     private var uMVPMatrixLoc = 0
@@ -62,6 +63,8 @@ class GameRenderer(val physics: GamePhysicsEngine) : GLSurfaceView.Renderer {
     private lateinit var pyramidMesh: Mesh
     private lateinit var wingBladeMesh: Mesh
     private lateinit var wedgeMesh: Mesh
+    private lateinit var magmaBoulderMesh: Mesh
+    private lateinit var energyOrbMesh: Mesh
 
     // Ball Meshes
     private lateinit var straightBallMesh: Mesh
@@ -328,6 +331,8 @@ class GameRenderer(val physics: GamePhysicsEngine) : GLSurfaceView.Renderer {
                 d = 0.35f,
                 color = floatArrayOf(1f, 1f, 1f, 1f)
             )
+            magmaBoulderMesh = Primitives.createMagmaBoulderMesh(radius = 1.0f)
+            energyOrbMesh = Primitives.createEnergyOrbMesh(radius = 0.60f)
 
             // Dynamic Sphere Obstacle Meshes
             straightBallMesh = Primitives.createRollingSphere(
@@ -388,6 +393,7 @@ class GameRenderer(val physics: GamePhysicsEngine) : GLSurfaceView.Renderer {
             totalTime += dt
 
             // Update physics step
+            physics.isShootHeld = isShootHeld
             physics.update(dt, isLeftHeld, isRightHeld, isBrakeHeld)
 
             // Evaluate dynamic Time-of-Day lighting & atmospheric system based on score
@@ -459,13 +465,19 @@ class GameRenderer(val physics: GamePhysicsEngine) : GLSurfaceView.Renderer {
 
             GLES20.glUseProgram(programId)
 
-            // Setup View Matrix
+            // Setup View Matrix with high-impact screen shake
             val cam = physics.cameraPos
             val target = physics.cameraLookAt
+
+            val shake = physics.cameraShakeMagnitude
+            val shakeOffsetX = if (shake > 0.001f) (kotlin.random.Random.nextFloat() * 2f - 1f) * shake * 1.35f else 0f
+            val shakeOffsetY = if (shake > 0.001f) (kotlin.random.Random.nextFloat() * 2f - 1f) * shake * 1.10f else 0f
+            val shakeOffsetZ = if (shake > 0.001f) (kotlin.random.Random.nextFloat() * 2f - 1f) * shake * 0.55f else 0f
+
             Matrix.setLookAtM(
                 viewMatrix, 0,
-                cam.x, cam.y, cam.z,
-                target.x, target.y, target.z,
+                cam.x + shakeOffsetX, cam.y + shakeOffsetY, cam.z + shakeOffsetZ,
+                target.x + shakeOffsetX * 0.4f, target.y + shakeOffsetY * 0.4f, target.z,
                 0f, 1f, 0f
             )
 
@@ -517,6 +529,9 @@ class GameRenderer(val physics: GamePhysicsEngine) : GLSurfaceView.Renderer {
 
             // 5. Rolling Boulders with Emissive Energy Halos
             renderBalls()
+
+            // 5b. Flying Plasma Projectiles & Laser Blasts
+            renderProjectiles()
 
             // 6. Realistic Articulated Hero Runner
             renderPlayer()
@@ -661,63 +676,103 @@ class GameRenderer(val physics: GamePhysicsEngine) : GLSurfaceView.Renderer {
             drawMesh(grassQuadMesh, floatArrayOf(0.06f, 0.16f, 0.12f, 1f))
             matrixStack.pop()
 
-            // Curbs: metallic border barriers
-            matrixStack.push()
-            matrixStack.translate(-halfW, 0.16f, centerZ)
-            matrixStack.scale(0.38f, 0.32f, segLen)
-            drawMesh(cubeMesh, floatArrayOf(0.95f, 0.22f, 0.18f, 1f))
-            matrixStack.pop()
+            // Curbs: Alternating Red & White Hazard Curbs (Matches Reference Art!)
+            val curbBlocks = 6
+            val curbStep = segLen / curbBlocks
+            for (cb in 0 until curbBlocks) {
+                val cz = seg.zStart - (cb + 0.5f) * curbStep
+                val isRed = (seg.id * curbBlocks + cb) % 2 == 0
+                val curbCol = if (isRed) floatArrayOf(0.96f, 0.20f, 0.15f, 1f) else floatArrayOf(0.95f, 0.96f, 0.98f, 1f)
 
-            matrixStack.push()
-            matrixStack.translate(halfW, 0.16f, centerZ)
-            matrixStack.scale(0.38f, 0.32f, segLen)
-            drawMesh(cubeMesh, floatArrayOf(0.95f, 0.22f, 0.18f, 1f))
-            matrixStack.pop()
+                // Left curb
+                matrixStack.push()
+                matrixStack.translate(-halfW, 0.16f, cz)
+                matrixStack.scale(0.38f, 0.32f, curbStep * 0.98f)
+                drawMesh(cubeMesh, curbCol)
+                matrixStack.pop()
 
-            // Glowing Center Dashed Lines (Reflective Cyber Strips)
+                // Right curb
+                matrixStack.push()
+                matrixStack.translate(halfW, 0.16f, cz)
+                matrixStack.scale(0.38f, 0.32f, curbStep * 0.98f)
+                drawMesh(cubeMesh, curbCol)
+                matrixStack.pop()
+            }
+
+            // Glowing Center Dashed Lines (Intense Neon Cyan) & Outer Lane Dividers
             val dashes = 6
             val dashStep = segLen / dashes
             for (d in 0 until dashes) {
                 val dz = seg.zStart - (d + 0.5f) * dashStep
+
+                // Luminous Neon Cyan Center Line Strip
                 matrixStack.push()
-                matrixStack.translate(0f, 0.025f, dz)
-                matrixStack.scale(0.24f, 0.02f, 2.5f)
-                drawMesh(cubeMesh, floatArrayOf(0.00f, 0.90f, 1.00f, 1f), emissive = 0.75f)
+                matrixStack.translate(0f, 0.026f, dz)
+                matrixStack.scale(0.32f, 0.022f, 3.2f)
+                drawMesh(cubeMesh, floatArrayOf(0.00f, 0.95f, 1.00f, 1f), emissive = 1.0f)
+                matrixStack.pop()
+
+                // Left White Lane Divider Marking
+                matrixStack.push()
+                matrixStack.translate(-2.4f, 0.02f, dz)
+                matrixStack.scale(0.14f, 0.018f, 1.8f)
+                drawMesh(cubeMesh, floatArrayOf(0.88f, 0.90f, 0.96f, 0.70f))
+                matrixStack.pop()
+
+                // Right White Lane Divider Marking
+                matrixStack.push()
+                matrixStack.translate(2.4f, 0.02f, dz)
+                matrixStack.scale(0.14f, 0.018f, 1.8f)
+                drawMesh(cubeMesh, floatArrayOf(0.88f, 0.90f, 0.96f, 0.70f))
                 matrixStack.pop()
             }
 
-            // Overhead Cyber Speedway Gate spanning the track (spaced out every 4 segments = 120m)
-            if (seg.id % 4 == 0) {
+            // Overhead Sci-Fi Portal Gateway Frames spanning the track (every 2 segments = 60m)
+            if (seg.id % 2 == 0) {
                 matrixStack.push()
                 matrixStack.translate(0f, 0f, seg.zStart)
 
-                // Left Post
+                // Left Dark Post
                 matrixStack.push()
-                matrixStack.translate(-halfW - 0.4f, 3.8f, 0f)
-                matrixStack.scale(0.45f, 7.6f, 0.45f)
-                drawMesh(cubeMesh, floatArrayOf(0.20f, 0.24f, 0.32f, 1f))
+                matrixStack.translate(-halfW - 0.35f, 3.6f, 0f)
+                matrixStack.scale(0.40f, 7.2f, 0.40f)
+                drawMesh(cubeMesh, floatArrayOf(0.14f, 0.16f, 0.22f, 1f))
                 matrixStack.pop()
 
-                // Right Post
+                // Right Dark Post
                 matrixStack.push()
-                matrixStack.translate(halfW + 0.4f, 3.8f, 0f)
-                matrixStack.scale(0.45f, 7.6f, 0.45f)
-                drawMesh(cubeMesh, floatArrayOf(0.20f, 0.24f, 0.32f, 1f))
+                matrixStack.translate(halfW + 0.35f, 3.6f, 0f)
+                matrixStack.scale(0.40f, 7.2f, 0.40f)
+                drawMesh(cubeMesh, floatArrayOf(0.14f, 0.16f, 0.22f, 1f))
                 matrixStack.pop()
 
-                // Overhead Crossbar with glowing chevron sign - high clearance above camera
+                // Overhead Dark Crossbar
                 matrixStack.push()
-                matrixStack.translate(0f, 7.6f, 0f)
-                matrixStack.scale(physics.roadWidth + 1.2f, 0.6f, 0.6f)
-                drawMesh(cubeMesh, floatArrayOf(0.15f, 0.18f, 0.24f, 1f))
+                matrixStack.translate(0f, 7.2f, 0f)
+                matrixStack.scale(physics.roadWidth + 1.1f, 0.55f, 0.45f)
+                drawMesh(cubeMesh, floatArrayOf(0.12f, 0.14f, 0.20f, 1f))
                 matrixStack.pop()
 
-                // Glowing neon energy bar on crossbar
+                // Glowing Neon Cyan Portal Frame Strips (Facing Player)
+                // Left inner neon strip
                 matrixStack.push()
-                matrixStack.translate(0f, 7.6f, -0.32f)
-                matrixStack.scale(physics.roadWidth * 0.85f, 0.22f, 0.05f)
-                val horiz = physics.currentSector.fogHorizonColor
-                drawMesh(cubeMesh, floatArrayOf(horiz[0], horiz[1], horiz[2], 1.0f), emissive = 1.0f)
+                matrixStack.translate(-halfW - 0.12f, 3.6f, -0.22f)
+                matrixStack.scale(0.08f, 7.0f, 0.04f)
+                drawMesh(cubeMesh, floatArrayOf(0.00f, 0.95f, 1.00f, 1.0f), emissive = 1.0f)
+                matrixStack.pop()
+
+                // Right inner neon strip
+                matrixStack.push()
+                matrixStack.translate(halfW + 0.12f, 3.6f, -0.22f)
+                matrixStack.scale(0.08f, 7.0f, 0.04f)
+                drawMesh(cubeMesh, floatArrayOf(0.00f, 0.95f, 1.00f, 1.0f), emissive = 1.0f)
+                matrixStack.pop()
+
+                // Top crossbar neon strip
+                matrixStack.push()
+                matrixStack.translate(0f, 7.15f, -0.24f)
+                matrixStack.scale(physics.roadWidth + 0.6f, 0.12f, 0.04f)
+                drawMesh(cubeMesh, floatArrayOf(0.00f, 0.95f, 1.00f, 1.0f), emissive = 1.0f)
                 matrixStack.pop()
 
                 matrixStack.pop()
@@ -798,6 +853,45 @@ class GameRenderer(val physics: GamePhysicsEngine) : GLSurfaceView.Renderer {
                     matrixStack.push()
                     matrixStack.scale(0.42f, 0.42f, 0.42f)
                     drawMesh(smoothSphereMesh, floatArrayOf(1.0f, 0.25f, 0.85f, 1.0f), emissive = 1.0f)
+                    matrixStack.pop()
+                }
+                CollectibleType.ENERGY_ORB -> {
+                    // Golden Energy Orb with sparkling rotating halo (Matches design art!)
+                    matrixStack.push()
+                    matrixStack.scale(0.85f, 0.85f, 0.85f)
+                    drawMesh(energyOrbMesh, floatArrayOf(1.0f, 0.88f, 0.15f, 1.0f), emissive = 1.0f)
+                    matrixStack.pop()
+
+                    // Orbiting golden halo ring
+                    matrixStack.push()
+                    matrixStack.rotate(totalTime * 120f, 0.5f, 1f, 0.2f)
+                    matrixStack.scale(0.85f, 0.85f, 0.85f)
+                    drawMesh(torusRingMesh, floatArrayOf(1.0f, 0.95f, 0.35f, 1.0f), emissive = 1.0f)
+                    matrixStack.pop()
+                }
+                CollectibleType.AMMO_PACK -> {
+                    // Glowing Plasma Ammo Crate Battery
+                    matrixStack.push()
+                    matrixStack.rotate(totalTime * 80f, 0f, 1f, 0f)
+                    matrixStack.scale(0.38f, 0.46f, 0.26f)
+                    drawMesh(cubeMesh, floatArrayOf(0.18f, 0.16f, 0.20f, 1f))
+                    matrixStack.pop()
+
+                    // Dual glowing plasma cartridges
+                    for (side in listOf(-0.11f, 0.11f)) {
+                        matrixStack.push()
+                        matrixStack.rotate(totalTime * 80f, 0f, 1f, 0f)
+                        matrixStack.translate(side, 0f, 0f)
+                        matrixStack.scale(0.08f, 0.38f, 0.12f)
+                        drawMesh(cubeMesh, floatArrayOf(1.0f, 0.45f, 0.05f, 1f), emissive = 1.0f)
+                        matrixStack.pop()
+                    }
+
+                    // Rotating fiery energy halo ring
+                    matrixStack.push()
+                    matrixStack.rotate(totalTime * 130f, 1f, 0.5f, 0f)
+                    matrixStack.scale(0.68f, 0.68f, 0.68f)
+                    drawMesh(torusRingMesh, floatArrayOf(1.0f, 0.55f, 0.10f, 1f), emissive = 0.95f)
                     matrixStack.pop()
                 }
             }
@@ -913,23 +1007,31 @@ class GameRenderer(val physics: GamePhysicsEngine) : GLSurfaceView.Renderer {
 
             matrixStack.push()
             matrixStack.translate(ball.position.x, ball.position.y, ball.position.z)
+            // Roll rotation along forward and horizontal axes
             matrixStack.rotate(ball.rollAngleX, 1f, 0f, 0f)
             matrixStack.rotate(ball.rollAngleZ, 0f, 0f, 1f)
+            // Personality wobble effect (Matches "Obstacles have personality: Rotate & wobble"!)
+            matrixStack.rotate(sin(ball.rollAngleX * 0.06f) * 7f, 0f, 0f, 1f)
 
-            val mesh = when (ball.ballType) {
-                BallType.STRAIGHT -> straightBallMesh
-                BallType.LEFT_TO_RIGHT -> crosserRightBallMesh
-                BallType.RIGHT_TO_LEFT -> crosserLeftBallMesh
-                BallType.FAST -> fastBallMesh
-                BallType.GIANT -> giantBallMesh
-                BallType.BOUNCING -> bouncerBallMesh
+            when (ball.ballType) {
+                BallType.STRAIGHT, BallType.FAST, BallType.GIANT -> {
+                    // Volcanic Magma Boulder with dark basalt rock facets & molten orange/gold crevices
+                    matrixStack.push()
+                    matrixStack.scale(ball.radius, ball.radius, ball.radius)
+                    val magmaEmissive = if (ball.ballType == BallType.FAST) 0.85f else 0.65f
+                    drawMesh(magmaBoulderMesh, emissive = magmaEmissive)
+                    matrixStack.pop()
+                }
+                BallType.LEFT_TO_RIGHT -> {
+                    drawMesh(crosserRightBallMesh, emissive = 0.25f)
+                }
+                BallType.RIGHT_TO_LEFT -> {
+                    drawMesh(crosserLeftBallMesh, emissive = 0.25f)
+                }
+                BallType.BOUNCING -> {
+                    drawMesh(bouncerBallMesh, emissive = 0.35f)
+                }
             }
-            val emissiveBoost = when (ball.ballType) {
-                BallType.FAST -> 0.45f
-                BallType.GIANT -> 0.20f
-                else -> 0.10f
-            }
-            drawMesh(mesh, emissive = emissiveBoost)
 
             // Orbiting glowing energy halo rings
             if (ball.ballType == BallType.GIANT) {
@@ -1229,23 +1331,31 @@ class GameRenderer(val physics: GamePhysicsEngine) : GLSurfaceView.Renderer {
                 }
             }
             CharacterModelId.VANGUARD -> {
-                // Cyber Jet Thruster Pack on Back
+                // Cyber Pack & Twin Luminous Neon Cyan Thruster Panels on Back (matches reference art!)
                 matrixStack.push()
-                matrixStack.translate(0f, 0.05f, p.torsoDepth / 2f + 0.08f)
-                matrixStack.scale(0.38f, 0.52f, 0.16f)
+                matrixStack.translate(0f, 0.04f, p.torsoDepth / 2f + 0.04f)
+                matrixStack.scale(0.36f, 0.54f, 0.08f)
                 drawMesh(cubeMesh, p.armorPlateColor)
                 matrixStack.pop()
 
-                // Thruster Exhaust Vents
+                // Left Glowing Neon Cyan Thruster Panel
                 matrixStack.push()
-                matrixStack.translate(-0.10f, -0.16f, p.torsoDepth / 2f + 0.15f)
-                matrixStack.scale(0.08f, 0.08f, 0.05f)
+                matrixStack.translate(-0.09f, 0.06f, p.torsoDepth / 2f + 0.085f)
+                matrixStack.scale(0.09f, 0.28f, 0.02f)
                 drawMesh(cubeMesh, p.neonGlowColor, emissive = 1.0f)
                 matrixStack.pop()
 
+                // Right Glowing Neon Cyan Thruster Panel
                 matrixStack.push()
-                matrixStack.translate(0.10f, -0.16f, p.torsoDepth / 2f + 0.15f)
-                matrixStack.scale(0.08f, 0.08f, 0.05f)
+                matrixStack.translate(0.09f, 0.06f, p.torsoDepth / 2f + 0.085f)
+                matrixStack.scale(0.09f, 0.28f, 0.02f)
+                drawMesh(cubeMesh, p.neonGlowColor, emissive = 1.0f)
+                matrixStack.pop()
+
+                // Lower Glowing Cyan Belt Accent
+                matrixStack.push()
+                matrixStack.translate(0f, -0.15f, p.torsoDepth / 2f + 0.085f)
+                matrixStack.scale(0.26f, 0.045f, 0.02f)
                 drawMesh(cubeMesh, p.neonGlowColor, emissive = 1.0f)
                 matrixStack.pop()
             }
@@ -1667,10 +1777,101 @@ class GameRenderer(val physics: GamePhysicsEngine) : GLSurfaceView.Renderer {
         drawMesh(cubeMesh, p.armorPlateColor)
         matrixStack.pop()
 
+        // *** SCI-FI PLASMA BLASTER RIFLE (Mounted on Right Hand) ***
+        matrixStack.push()
+        matrixStack.translate(0f, -p.foreArmLen + 0.02f, -0.16f)
+
+        // Gun Receiver Body
+        matrixStack.push()
+        matrixStack.scale(0.13f, 0.16f, 0.42f)
+        drawMesh(cubeMesh, floatArrayOf(0.14f, 0.15f, 0.18f, 1f))
+        matrixStack.pop()
+
+        // Upper Cooling Rail
+        matrixStack.push()
+        matrixStack.translate(0f, 0.09f, -0.04f)
+        matrixStack.scale(0.08f, 0.04f, 0.36f)
+        drawMesh(cubeMesh, floatArrayOf(0.25f, 0.28f, 0.32f, 1f))
+        matrixStack.pop()
+
+        // Glowing Plasma Core Side Vents
+        for (side in listOf(-1f, 1f)) {
+            matrixStack.push()
+            matrixStack.translate(side * 0.07f, 0.01f, -0.04f)
+            matrixStack.scale(0.015f, 0.08f, 0.24f)
+            drawMesh(cubeMesh, floatArrayOf(0.0f, 0.95f, 1.0f, 1f), emissive = 1.0f)
+            matrixStack.pop()
+        }
+
+        // Heavy Plasma Barrel extending forward towards incoming balls
+        matrixStack.push()
+        matrixStack.translate(0f, 0.01f, -0.32f)
+        matrixStack.scale(0.095f, 0.095f, 0.26f)
+        drawMesh(cubeMesh, floatArrayOf(0.09f, 0.10f, 0.12f, 1f))
+        matrixStack.pop()
+
+        // Glowing Muzzle Ring
+        matrixStack.push()
+        matrixStack.translate(0f, 0.01f, -0.46f)
+        matrixStack.scale(0.11f, 0.11f, 0.05f)
+        drawMesh(cubeMesh, floatArrayOf(0.0f, 0.95f, 1.0f, 1f), emissive = 1.0f)
+        matrixStack.pop()
+
+        // Dynamic Muzzle Flash Burst when firing
+        if (p.muzzleFlashTimer > 0f) {
+            val flashScale = 0.28f + (p.muzzleFlashTimer / 0.12f) * 0.22f
+            matrixStack.push()
+            matrixStack.translate(0f, 0.01f, -0.58f)
+            matrixStack.rotate(totalTime * 400f, 0f, 0f, 1f)
+            matrixStack.scale(flashScale, flashScale, flashScale * 1.6f)
+            drawMesh(cubeMesh, floatArrayOf(1.0f, 0.95f, 0.30f, 1f), emissive = 1.0f)
+            matrixStack.pop()
+        }
+
+        matrixStack.pop() // End Blaster
+
         matrixStack.pop() // End Right Forearm
         matrixStack.pop() // End Right Arm
 
+        // 2x SPEED Boost Mode: Luminous Warp Streaks & Jet Aura (Matches Boost Mode panel in image!)
+        if (p.isBoosting) {
+            val boostPulse = kotlin.math.sin(totalTime * 25f) * 0.15f + 0.85f
+            for (i in 0 until 8) {
+                val ang = (i.toFloat() / 8f) * 2f * kotlin.math.PI.toFloat()
+                val rx = kotlin.math.cos(ang) * (0.42f + (i % 2) * 0.18f)
+                val ry = kotlin.math.sin(ang) * (0.50f + (i % 2) * 0.22f) + 0.9f
+                matrixStack.push()
+                matrixStack.translate(rx, ry, 0.4f + (i % 3) * 0.35f)
+                matrixStack.scale(0.04f, 0.04f, 2.2f)
+                drawMesh(cubeMesh, floatArrayOf(0.0f, 0.95f, 1.0f, boostPulse), emissive = 1.0f)
+                matrixStack.pop()
+            }
+        }
+
         matrixStack.pop() // End Player
+    }
+
+    private fun renderProjectiles() {
+        val projs = physics.projectilePool
+        for (pr in projs) {
+            if (!pr.isActive) continue
+            matrixStack.push()
+            matrixStack.translate(pr.position.x, pr.position.y, pr.position.z)
+
+            // Inner super-bright incandescent white/cyan energy core
+            matrixStack.push()
+            matrixStack.scale(pr.radius * 0.42f, pr.radius * 0.42f, 1.15f)
+            drawMesh(cubeMesh, floatArrayOf(1.0f, 1.0f, 1.0f, 1.0f), emissive = 1.0f)
+            matrixStack.pop()
+
+            // Outer radiant plasma bolt
+            matrixStack.push()
+            matrixStack.scale(pr.radius * 0.90f, pr.radius * 0.90f, 1.55f)
+            drawMesh(cubeMesh, pr.color, emissive = 0.95f)
+            matrixStack.pop()
+
+            matrixStack.pop()
+        }
     }
 
     private fun renderParticles() {
@@ -1697,13 +1898,12 @@ class GameRenderer(val physics: GamePhysicsEngine) : GLSurfaceView.Renderer {
             when (pt.particleType) {
                 ParticleType.DUST_CLOUD -> {
                     // Soft semi-transparent billowing road dust sphere
-                    // Scaled as a ground-flattened cloud (Y is 32% of X/Z) so it hugs the asphalt
-                    // and NEVER rises into the line of sight of incoming balls behind it
+                    // As it ages, it expands outwards into a soft ground-hugging dust cloud
                     val lifeProgress = (pt.lifetime / pt.maxLife).coerceIn(0f, 1f)
-                    val scaleFactor = pt.size * (0.80f + 0.35f * (1f - lifeProgress))
+                    val scaleFactor = pt.size * (0.85f + 0.65f * (1f - lifeProgress))
                     matrixStack.rotate(pt.rotation, 0f, 1f, 0f)
-                    matrixStack.scale(scaleFactor, scaleFactor * 0.32f, scaleFactor)
-                    drawMesh(smoothSphereMesh, pt.color, emissive = 0.05f)
+                    matrixStack.scale(scaleFactor, scaleFactor * 0.38f, scaleFactor)
+                    drawMesh(smoothSphereMesh, pt.color, emissive = 0.08f)
                 }
                 ParticleType.ROCK_DEBRIS -> {
                     // Tumbling geometric gravel / concrete fragment

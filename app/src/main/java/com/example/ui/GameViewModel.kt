@@ -59,7 +59,11 @@ data class LiveGameStats(
     val timeOfDayEmoji: String = "🌅",
     val timeOfDayTime: String = "06:00 AM",
     val timeOfDayDayNumber: Int = 1,
-    val timeOfDayCycleProgress: Float = 0f
+    val timeOfDayCycleProgress: Float = 0f,
+    val orbsCollected: Int = 0,
+    val maxOrbsForBoost: Int = 3,
+    val ammo: Int = 10,
+    val maxAmmo: Int = 30
 )
 
 data class GameOverSummary(
@@ -117,9 +121,26 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
     private val _collectiblePickupAlert = MutableStateFlow<com.example.engine.CollectibleType?>(null)
     val collectiblePickupAlert: StateFlow<com.example.engine.CollectibleType?> = _collectiblePickupAlert.asStateFlow()
 
+    private val _dodgeFeedbackAlert = MutableStateFlow<String?>(null)
+    val dodgeFeedbackAlert: StateFlow<String?> = _dodgeFeedbackAlert.asStateFlow()
+
+    private val _scorePopupDelta = MutableStateFlow<String?>(null)
+    val scorePopupDelta: StateFlow<String?> = _scorePopupDelta.asStateFlow()
+
     private val _timeOfDayAnnouncement = MutableStateFlow<String?>(null)
     val timeOfDayAnnouncement: StateFlow<String?> = _timeOfDayAnnouncement.asStateFlow()
     private var lastAnnouncedPhase: com.example.engine.TimeOfDayPhase? = null
+
+    private val _screenShakeTrigger = MutableStateFlow(0L)
+    val screenShakeTrigger: StateFlow<Long> = _screenShakeTrigger.asStateFlow()
+
+    private val _screenShakeIntensity = MutableStateFlow(0f)
+    val screenShakeIntensity: StateFlow<Float> = _screenShakeIntensity.asStateFlow()
+
+    fun triggerScreenShake(intensity: Float) {
+        _screenShakeIntensity.value = intensity
+        _screenShakeTrigger.value = System.currentTimeMillis()
+    }
 
     val topRecord: StateFlow<GameRecord?>
     val top10Records: StateFlow<List<GameRecord>>
@@ -213,6 +234,34 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
                     _collectiblePickupAlert.value = null
                 }
             }
+        }
+
+        physics.onDodgeFeedback = { text, gain, _ ->
+            _dodgeFeedbackAlert.value = text
+            _scorePopupDelta.value = "+$gain"
+            triggerHaptic(35)
+            viewModelScope.launch {
+                delay(1200)
+                if (_dodgeFeedbackAlert.value == text) {
+                    _dodgeFeedbackAlert.value = null
+                }
+                _scorePopupDelta.value = null
+            }
+        }
+
+        physics.onShootFired = {
+            triggerHaptic(50, heavy = false)
+            triggerScreenShake(9.0f)
+        }
+
+        physics.onBoulderDestroyed = {
+            triggerHaptic(200, heavy = true)
+            triggerScreenShake(24.0f)
+        }
+
+        physics.onOutOfAmmo = {
+            triggerHaptic(25, heavy = false)
+            triggerScreenShake(3.5f)
         }
 
         renderer = GameRenderer(physics)
@@ -329,6 +378,20 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
         renderer.isBrakeHeld = held
     }
 
+    fun shoot() {
+        physics.shoot()
+        triggerHaptic(50)
+    }
+
+    fun setShootHeld(held: Boolean) {
+        renderer.isShootHeld = held
+        physics.isShootHeld = held
+        if (held) {
+            physics.shoot()
+            triggerHaptic(40)
+        }
+    }
+
     fun pollStats() {
         if (_currentScreen.value == AppScreen.PLAYING) {
             val best = topRecord.value?.score ?: 0
@@ -383,7 +446,11 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
                 timeOfDayEmoji = tod.phase.emoji,
                 timeOfDayTime = tod.timeString,
                 timeOfDayDayNumber = tod.dayNumber,
-                timeOfDayCycleProgress = tod.cycleProgress
+                timeOfDayCycleProgress = tod.cycleProgress,
+                orbsCollected = physics.orbsCollected,
+                maxOrbsForBoost = physics.maxOrbsForBoost,
+                ammo = physics.player.ammo,
+                maxAmmo = physics.player.maxAmmo
             )
         }
     }
@@ -452,7 +519,7 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun triggerHaptic(durationMs: Long) {
+    fun triggerHaptic(durationMs: Long, heavy: Boolean = false) {
         if (!_vibrationEnabled.value) return
         try {
             val context = getApplication<Application>()
@@ -465,10 +532,11 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
             } ?: return
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                val amplitude = if (heavy) VibrationEffect.DEFAULT_AMPLITUDE else 180
                 vibrator.vibrate(
                     VibrationEffect.createOneShot(
                         durationMs,
-                        VibrationEffect.DEFAULT_AMPLITUDE
+                        amplitude
                     )
                 )
             } else {

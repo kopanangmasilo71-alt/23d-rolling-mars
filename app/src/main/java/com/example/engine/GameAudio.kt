@@ -186,6 +186,125 @@ class GameAudio {
         playPcm(samples)
     }
 
+    fun playLandingImpact() {
+        val durationMs = 140
+        val numSamples = (sampleRate * durationMs) / 1000
+        val samples = ShortArray(numSamples)
+        for (i in 0 until numSamples) {
+            val t = i.toDouble() / sampleRate
+            val progress = i.toDouble() / numSamples
+            val freq = 110.0 - 55.0 * progress
+            val envelope = (1.0 - progress) * (1.0 - progress)
+            val noise = (Random.nextDouble() * 2.0 - 1.0) * 0.25
+            val sample = (sin(2.0 * PI * freq * t) * 0.75 + noise) * envelope * 0.9
+            samples[i] = (sample.coerceIn(-1.0, 1.0) * Short.MAX_VALUE).toInt().toShort()
+        }
+        playPcm(samples)
+    }
+
+    fun playOrbCollect(orbNumber: Int = 1) {
+        val durationMs = 180
+        val numSamples = (sampleRate * durationMs) / 1000
+        val samples = ShortArray(numSamples)
+        val baseFreq = when (orbNumber) {
+            1 -> 659.25 // E5
+            2 -> 880.00 // A5
+            else -> 1174.66 // D6
+        }
+        for (i in 0 until numSamples) {
+            val t = i.toDouble() / sampleRate
+            val progress = i.toDouble() / numSamples
+            val envelope = (1.0 - progress)
+            val sample = (sin(2.0 * PI * baseFreq * t) * 0.6 + sin(2.0 * PI * baseFreq * 2.0 * t) * 0.3) * envelope
+            samples[i] = (sample.coerceIn(-1.0, 1.0) * Short.MAX_VALUE).toInt().toShort()
+        }
+        playPcm(samples)
+    }
+
+    fun playBoostSurge() {
+        val durationMs = 450
+        val numSamples = (sampleRate * durationMs) / 1000
+        val samples = ShortArray(numSamples)
+        for (i in 0 until numSamples) {
+            val t = i.toDouble() / sampleRate
+            val progress = i.toDouble() / numSamples
+            // Rising warp whoosh 250Hz -> 1400Hz
+            val freq = 250.0 + 1150.0 * (progress * progress)
+            val envelope = sin(progress * PI)
+            val noise = (Random.nextDouble() * 2.0 - 1.0) * 0.35
+            val sample = (sin(2.0 * PI * freq * t) * 0.65 + noise) * envelope
+            samples[i] = (sample.coerceIn(-1.0, 1.0) * Short.MAX_VALUE).toInt().toShort()
+        }
+        playPcm(samples)
+    }
+
+    fun playLaserShot() {
+        val durationMs = 120
+        val numSamples = (sampleRate * durationMs) / 1000
+        val samples = ShortArray(numSamples)
+        for (i in 0 until numSamples) {
+            val t = i.toDouble() / sampleRate
+            val progress = i.toDouble() / numSamples
+            // Rapid high-tech sci-fi plasma chirp from 2400 Hz down to 320 Hz
+            val freq = 2400.0 * (1.0 - progress * 0.86)
+            val envelope = (1.0 - progress) * (1.0 - progress)
+            val sample = sin(2.0 * PI * freq * t) * envelope * 0.90
+            samples[i] = (sample.coerceIn(-1.0, 1.0) * Short.MAX_VALUE).toInt().toShort()
+        }
+        playPcm(samples)
+    }
+
+    fun playBoulderExplode() {
+        val durationMs = 280
+        val numSamples = (sampleRate * durationMs) / 1000
+        val samples = ShortArray(numSamples)
+        for (i in 0 until numSamples) {
+            val t = i.toDouble() / sampleRate
+            val progress = i.toDouble() / numSamples
+            // Heavy resonant sub-bass explosion crunch
+            val freq = 130.0 - 90.0 * progress
+            val envelope = (1.0 - progress) * (1.0 - progress)
+            val noise = (Random.nextDouble() * 2.0 - 1.0) * 0.65
+            val subBass = sin(2.0 * PI * freq * t) * 0.70
+            val sample = (subBass + noise) * envelope * 0.95
+            samples[i] = (sample.coerceIn(-1.0, 1.0) * Short.MAX_VALUE).toInt().toShort()
+        }
+        playPcm(samples)
+    }
+
+    fun playDryFire() {
+        val durationMs = 60
+        val numSamples = (sampleRate * durationMs) / 1000
+        val samples = ShortArray(numSamples)
+        for (i in 0 until numSamples) {
+            val t = i.toDouble() / sampleRate
+            val progress = i.toDouble() / numSamples
+            val freq = 820.0 - 520.0 * progress
+            val envelope = (1.0 - progress) * (1.0 - progress)
+            val noise = (Random.nextDouble() * 2.0 - 1.0) * 0.45
+            val sample = (sin(2.0 * PI * freq * t) * 0.6 + noise) * envelope * 0.85
+            samples[i] = (sample.coerceIn(-1.0, 1.0) * Short.MAX_VALUE).toInt().toShort()
+        }
+        playPcm(samples)
+    }
+
+    fun playAmmoPickup() {
+        val durationMs = 180
+        val numSamples = (sampleRate * durationMs) / 1000
+        val samples = ShortArray(numSamples)
+        for (i in 0 until numSamples) {
+            val t = i.toDouble() / sampleRate
+            val progress = i.toDouble() / numSamples
+            // Ascending dual mechanical reload chime
+            val freq1 = 523.25 + 523.25 * progress
+            val freq2 = 659.25 + 659.25 * progress
+            val envelope = (1.0 - progress * 0.4)
+            val sample = (sin(2.0 * PI * freq1 * t) * 0.5 + sin(2.0 * PI * freq2 * t) * 0.4) * envelope * 0.8
+            samples[i] = (sample.coerceIn(-1.0, 1.0) * Short.MAX_VALUE).toInt().toShort()
+        }
+        playPcm(samples)
+    }
+
     fun playSectorAlert() {
         val durationMs = 400
         val numSamples = (sampleRate * durationMs) / 1000

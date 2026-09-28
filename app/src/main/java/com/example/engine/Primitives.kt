@@ -5,8 +5,10 @@ import java.nio.ByteOrder
 import java.nio.FloatBuffer
 import java.nio.ShortBuffer
 import kotlin.math.PI
+import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.sin
+import kotlin.math.sqrt
 
 class Mesh(
     val vertexBuffer: FloatBuffer,
@@ -780,6 +782,151 @@ object Primitives {
             indices.add(base)
             indices.add((base + 2).toShort())
             indices.add((base + 3).toShort())
+        }
+
+        return Mesh(
+            createFloatBuffer(vertices.toFloatArray()),
+            createShortBuffer(indices.toShortArray()),
+            indices.size
+        )
+    }
+
+    /**
+     * Volcanic Magma Boulder with dark basalt rock facets and radiant molten orange/yellow magma crevices.
+     * Matches the obstacle personality shown in the design specification.
+     */
+    fun createMagmaBoulderMesh(
+        radius: Float = 1f,
+        rings: Int = 14,
+        sectors: Int = 18
+    ): Mesh {
+        val vertices = ArrayList<Float>()
+        val indices = ArrayList<Short>()
+
+        val R = 1f / (rings - 1).toFloat()
+        val S = 1f / (sectors - 1).toFloat()
+
+        for (r in 0 until rings) {
+            val v = r * R
+            val theta = v * PI.toFloat()
+            val sinTheta = sin(theta)
+            val cosTheta = cos(theta)
+
+            for (s in 0 until sectors) {
+                val u = s * S
+                val phi = u * 2f * PI.toFloat()
+                val sinPhi = sin(phi)
+                val cosPhi = cos(phi)
+
+                // Faceted noise perturbation for rocky asteroid surface
+                val noise = sin(phi * 4f) * cos(theta * 5f) * 0.08f + sin(phi * 7f + theta * 3f) * 0.04f
+                val rDist = radius * (1.0f + noise)
+
+                val x = cosPhi * sinTheta * rDist
+                val y = cosTheta * rDist
+                val z = sinPhi * sinTheta * rDist
+
+                // Lava crevice pattern: latitude / longitude seams glow hot orange-gold
+                val crevicePattern = abs(sin(phi * 3.5f)) * abs(cos(theta * 4f))
+                val isCrevice = crevicePattern > 0.62f || (r % 2 == 1 && s % 3 == 0)
+
+                val col = if (isCrevice) {
+                    // Radiant molten magma
+                    floatArrayOf(1.0f, 0.58f + 0.35f * (s % 2), 0.08f, 1.0f)
+                } else {
+                    // Dark charred obsidian / volcanic basalt
+                    val darkVar = 0.14f + (s % 4) * 0.02f
+                    floatArrayOf(darkVar, darkVar * 1.05f, darkVar * 1.15f, 1.0f)
+                }
+
+                // Normal
+                val len = sqrt(x * x + y * y + z * z)
+                val nx = if (len > 0f) x / len else 0f
+                val ny = if (len > 0f) y / len else 1f
+                val nz = if (len > 0f) z / len else 0f
+
+                vertices.add(x); vertices.add(y); vertices.add(z)
+                vertices.add(nx); vertices.add(ny); vertices.add(nz)
+                vertices.add(col[0]); vertices.add(col[1]); vertices.add(col[2]); vertices.add(col[3])
+            }
+        }
+
+        for (r in 0 until rings - 1) {
+            for (s in 0 until sectors - 1) {
+                val i0 = (r * sectors + s).toShort()
+                val i1 = (r * sectors + (s + 1)).toShort()
+                val i2 = ((r + 1) * sectors + (s + 1)).toShort()
+                val i3 = ((r + 1) * sectors + s).toShort()
+
+                indices.add(i0)
+                indices.add(i1)
+                indices.add(i2)
+
+                indices.add(i0)
+                indices.add(i2)
+                indices.add(i3)
+            }
+        }
+
+        return Mesh(
+            createFloatBuffer(vertices.toFloatArray()),
+            createShortBuffer(indices.toShortArray()),
+            indices.size
+        )
+    }
+
+    /**
+     * Floating Golden Energy Orb collectible with radiant starburst glow flare.
+     */
+    fun createEnergyOrbMesh(radius: Float = 0.55f): Mesh {
+        val vertices = ArrayList<Float>()
+        val indices = ArrayList<Short>()
+
+        // 1. Core Sphere
+        val rings = 10
+        val sectors = 14
+        val R = 1f / (rings - 1).toFloat()
+        val S = 1f / (sectors - 1).toFloat()
+
+        for (r in 0 until rings) {
+            val v = r * R
+            val theta = v * PI.toFloat()
+            val sinTheta = sin(theta)
+            val cosTheta = cos(theta)
+
+            for (s in 0 until sectors) {
+                val u = s * S
+                val phi = u * 2f * PI.toFloat()
+
+                val x = cos(phi) * sinTheta * radius
+                val y = cosTheta * radius
+                val z = sin(phi) * sinTheta * radius
+
+                val nx = cos(phi) * sinTheta
+                val ny = cosTheta
+                val nz = sin(phi) * sinTheta
+
+                // Luminous gold/amber gradient
+                val goldR = 1.0f
+                val goldG = 0.82f + 0.15f * cosTheta
+                val goldB = 0.12f
+
+                vertices.add(x); vertices.add(y); vertices.add(z)
+                vertices.add(nx); vertices.add(ny); vertices.add(nz)
+                vertices.add(goldR); vertices.add(goldG); vertices.add(goldB); vertices.add(1.0f)
+            }
+        }
+
+        for (r in 0 until rings - 1) {
+            for (s in 0 until sectors - 1) {
+                val i0 = (r * sectors + s).toShort()
+                val i1 = (r * sectors + (s + 1)).toShort()
+                val i2 = ((r + 1) * sectors + (s + 1)).toShort()
+                val i3 = ((r + 1) * sectors + s).toShort()
+
+                indices.add(i0); indices.add(i1); indices.add(i2)
+                indices.add(i0); indices.add(i2); indices.add(i3)
+            }
         }
 
         return Mesh(

@@ -297,4 +297,118 @@ class ExampleUnitTest {
         assertNotNull(wedgeMesh)
         assertNotNull(straightBallMesh)
     }
+
+    @Test
+    fun physicsEngine_shoot_spawnsProjectileAndHitsBoulder() {
+        val audio = GameAudio().apply { isEnabled = false }
+        val physics = GamePhysicsEngine(audio) { _, _, _, _, _ -> }
+        physics.startNewGame()
+
+        // Verify initial state: no projectiles active
+        val initialActiveCount = physics.projectilePool.count { it.isActive }
+        assertEquals(0, initialActiveCount)
+
+        // Fire shot
+        physics.shoot()
+        val afterShootCount = physics.projectilePool.count { it.isActive }
+        assertEquals(1, afterShootCount)
+
+        val proj = physics.projectilePool.first { it.isActive }
+        assertTrue("Projectile should move forward into -Z direction", proj.velocity.z < 0f)
+
+        // Place a boulder right in the bullet's path
+        val ball = physics.ballPool[0]
+        ball.reset(BallType.STRAIGHT, spawnX = proj.position.x, spawnZ = proj.position.z - 3f, baseSpeed = 0f)
+        assertTrue(ball.isActive)
+
+        val initialScore = physics.score
+        val initialDodged = physics.ballsDodged
+
+        // Update physics step so projectile collides with the boulder
+        physics.update(dt = 0.08f, leftHeld = false, rightHeld = false, brakeHeld = false)
+
+        assertFalse("Boulder should be destroyed on laser impact", ball.isActive)
+        assertFalse("Projectile should be consumed on impact", proj.isActive)
+        assertTrue("Score should increase when blasting a boulder", physics.score > initialScore)
+        assertEquals("Balls dodged/destroyed count should increment", initialDodged + 1, physics.ballsDodged)
+    }
+
+    @Test
+    fun physicsEngine_boulderTrailDust_generatesDustParticles() {
+        val audio = GameAudio().apply { isEnabled = false }
+        val physics = GamePhysicsEngine(audio) { _, _, _, _, _ -> }
+        physics.startNewGame()
+
+        // Place an active rolling boulder on the road
+        val ball = physics.ballPool[0]
+        ball.reset(BallType.STRAIGHT, spawnX = 0f, spawnZ = -10f, baseSpeed = 12f)
+        ball.position.y = ball.radius // on ground
+
+        // Run several update ticks so dust timer triggers
+        for (i in 0 until 10) {
+            physics.update(dt = 0.03f, leftHeld = false, rightHeld = false, brakeHeld = false)
+        }
+
+        val dustParticles = physics.particles.particles.count { it.lifetime > 0f && it.particleType == com.example.engine.ParticleType.DUST_CLOUD }
+        assertTrue("Rolling boulder should emit dust cloud particles behind it", dustParticles > 0)
+    }
+
+    @Test
+    fun physicsEngine_ammoSystem_depletesAndRechargesFromPowerUps() {
+        val audio = GameAudio().apply { isEnabled = false }
+        val physics = GamePhysicsEngine(audio) { _, _, _, _, _ -> }
+        physics.startNewGame()
+
+        // Verify initial ammo
+        assertEquals(10, physics.player.ammo)
+
+        // Fire 1 shot: ammo should decrease to 9
+        physics.shoot()
+        assertEquals(9, physics.player.ammo)
+
+        // Deplete remaining ammo
+        physics.player.ammo = 0
+        val projectilesBefore = physics.projectilePool.count { it.isActive }
+        physics.shootCooldownTimer = 0f
+        physics.shoot() // Dry fire
+        val projectilesAfter = physics.projectilePool.count { it.isActive }
+        assertEquals("Should not spawn projectile when out of ammo", projectilesBefore, projectilesAfter)
+
+        // Recharge ammo via power-up (e.g. AMMO_PACK)
+        physics.spawnCollectibleAt(com.example.engine.CollectibleType.AMMO_PACK, 0f, 0f)
+        physics.player.position.set(0f, 0f, 0f)
+        physics.update(dt = 0.05f, leftHeld = false, rightHeld = false, brakeHeld = false)
+
+        assertTrue("Ammo should recharge from power-up", physics.player.ammo > 0)
+    }
+
+    @Test
+    fun physicsEngine_screenShake_triggersOnShotAndBoulderDestruction() {
+        val audio = GameAudio().apply { isEnabled = false }
+        val physics = GamePhysicsEngine(audio) { _, _, _, _, _ -> }
+        physics.startNewGame()
+
+        var shootCallbackFired = false
+        var boulderDestroyedCallbackFired = false
+        physics.onShootFired = { shootCallbackFired = true }
+        physics.onBoulderDestroyed = { boulderDestroyedCallbackFired = true }
+
+        // Test screen shake on shot
+        physics.cameraShakeMagnitude = 0f
+        physics.shoot()
+        assertTrue("Screen shake magnitude should increase on shot", physics.cameraShakeMagnitude > 0f)
+        assertTrue("onShootFired callback should be invoked", shootCallbackFired)
+
+        // Test screen shake on boulder destruction
+        val proj = physics.projectilePool.first { it.isActive }
+        val ball = physics.ballPool[0]
+        ball.reset(BallType.STRAIGHT, spawnX = proj.position.x, spawnZ = proj.position.z - 2f, baseSpeed = 0f)
+
+        val shakeBeforeImpact = physics.cameraShakeMagnitude
+        physics.update(dt = 0.08f, leftHeld = false, rightHeld = false, brakeHeld = false)
+
+        assertTrue("Boulder should be destroyed", !ball.isActive)
+        assertTrue("onBoulderDestroyed callback should be invoked", boulderDestroyedCallbackFired)
+        assertTrue("Screen shake should trigger on boulder destruction", physics.cameraShakeMagnitude > shakeBeforeImpact)
+    }
 }

@@ -33,6 +33,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.EmojiEvents
+import androidx.compose.material.icons.filled.FlashOn
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Speed
@@ -51,12 +52,14 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 @Composable
 fun GameHud(
@@ -77,11 +80,50 @@ fun GameHud(
     val shieldDeflected by viewModel.shieldDeflectedAlert.collectAsStateWithLifecycle()
     val collectiblePickup by viewModel.collectiblePickupAlert.collectAsStateWithLifecycle()
 
+    val shakeTrigger by viewModel.screenShakeTrigger.collectAsStateWithLifecycle()
+    val shakeIntensity by viewModel.screenShakeIntensity.collectAsStateWithLifecycle()
+    val shakeAnimX = androidx.compose.runtime.remember { androidx.compose.animation.core.Animatable(0f) }
+    val shakeAnimY = androidx.compose.runtime.remember { androidx.compose.animation.core.Animatable(0f) }
+
+    LaunchedEffect(shakeTrigger) {
+        if (shakeTrigger != 0L && shakeIntensity > 0f) {
+            val intensity = shakeIntensity
+            val signX = if (kotlin.random.Random.nextBoolean()) 1f else -1f
+            val signY = if (kotlin.random.Random.nextBoolean()) 1f else -1f
+            shakeAnimX.snapTo(signX * intensity)
+            shakeAnimY.snapTo(signY * intensity * 0.75f)
+            kotlinx.coroutines.coroutineScope {
+                launch {
+                    shakeAnimX.animateTo(
+                        targetValue = 0f,
+                        animationSpec = androidx.compose.animation.core.spring(
+                            dampingRatio = 0.35f,
+                            stiffness = 1400f
+                        )
+                    )
+                }
+                launch {
+                    shakeAnimY.animateTo(
+                        targetValue = 0f,
+                        animationSpec = androidx.compose.animation.core.spring(
+                            dampingRatio = 0.35f,
+                            stiffness = 1400f
+                        )
+                    )
+                }
+            }
+        }
+    }
+
     Box(
         modifier = modifier
             .fillMaxSize()
             .statusBarsPadding()
             .navigationBarsPadding()
+            .graphicsLayer {
+                translationX = shakeAnimX.value
+                translationY = shakeAnimY.value
+            }
     ) {
         // TOP HUD BAR
         TopHudBar(
@@ -189,6 +231,8 @@ fun GameHud(
                     com.example.engine.CollectibleType.SPEED_BOOST -> Color(0xFF00E676)
                     com.example.engine.CollectibleType.SCORE_MULTIPLIER -> Color(0xFFFFD54F)
                     com.example.engine.CollectibleType.ENERGY_CELL -> Color(0xFFFF4081)
+                    com.example.engine.CollectibleType.ENERGY_ORB -> Color(0xFFFFD700)
+                    com.example.engine.CollectibleType.AMMO_PACK -> Color(0xFFFF6D00)
                 }
                 Surface(
                     shape = RoundedCornerShape(16.dp),
@@ -207,6 +251,8 @@ fun GameHud(
                                 com.example.engine.CollectibleType.SPEED_BOOST -> Icons.Default.Speed
                                 com.example.engine.CollectibleType.SCORE_MULTIPLIER -> Icons.Default.Stars
                                 com.example.engine.CollectibleType.ENERGY_CELL -> Icons.Default.Bolt
+                                com.example.engine.CollectibleType.ENERGY_ORB -> Icons.Default.Stars
+                                com.example.engine.CollectibleType.AMMO_PACK -> Icons.Default.FlashOn
                             },
                             contentDescription = null,
                             tint = colColor,
@@ -302,7 +348,7 @@ fun GameHud(
             Surface(
                 shape = RoundedCornerShape(20.dp),
                 color = Color(0xEE0A192F),
-                border = androidx.compose.foundation.BorderStroke(2.dp, Color(0xFF00E5FF)),
+                border = androidx.compose.foundation.BorderStroke(2.dp, Color(0xFFFFD700)),
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
             ) {
                 Row(
@@ -312,15 +358,15 @@ fun GameHud(
                     Icon(
                         imageVector = Icons.Default.Bolt,
                         contentDescription = null,
-                        tint = Color(0xFF00E5FF),
+                        tint = Color(0xFFFFD700),
                         modifier = Modifier.size(22.dp)
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
-                        text = "CLOSE CALL! +200",
-                        fontSize = 15.sp,
+                        text = "NEAR MISS! +100",
+                        fontSize = 16.sp,
                         fontWeight = FontWeight.Black,
-                        color = Color.White,
+                        color = Color(0xFFFFD700),
                         letterSpacing = 1.sp
                     )
                 }
@@ -328,15 +374,56 @@ fun GameHud(
         }
 
         // BOTTOM MOBILE TOUCH CONTROLS
-        TouchController(
-            onLeftChange = { held -> viewModel.setLeftHeld(held) },
-            onRightChange = { held -> viewModel.setRightHeld(held) },
-            onJump = { viewModel.jump() },
-            onBrakeChange = { held -> viewModel.setBrakeHeld(held) },
+        Column(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .padding(horizontal = 14.dp, vertical = 14.dp)
-        )
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            // Out of Ammo / Low Ammo Warning Alert
+            if (stats.ammo == 0) {
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = Color(0xD9B71C1C),
+                    border = androidx.compose.foundation.BorderStroke(1.2.dp, Color(0xFFFF5252)),
+                    modifier = Modifier.padding(bottom = 8.dp)
+                ) {
+                    Text(
+                        text = "⚡ OUT OF AMMO! COLLECT POWER-UPS TO RECHARGE",
+                        color = Color.White,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Black,
+                        letterSpacing = 0.5.sp,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+                    )
+                }
+            } else if (stats.ammo <= 3) {
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = Color(0xD9E65100),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFFB74D)),
+                    modifier = Modifier.padding(bottom = 8.dp)
+                ) {
+                    Text(
+                        text = "⚡ LOW AMMO: ${stats.ammo} BOLTS LEFT",
+                        color = Color.White,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Black,
+                        letterSpacing = 0.5.sp,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp)
+                    )
+                }
+            }
+
+            TouchController(
+                onLeftChange = { held -> viewModel.setLeftHeld(held) },
+                onRightChange = { held -> viewModel.setRightHeld(held) },
+                onJump = { viewModel.jump() },
+                onShootChange = { held -> viewModel.setShootHeld(held) },
+                onShoot = { viewModel.shoot() },
+                ammo = stats.ammo
+            )
+        }
     }
 }
 
@@ -456,6 +543,35 @@ private fun TopHudBar(
                         modifier = Modifier.padding(end = 8.dp)
                     )
 
+                    // Ammo Gauge Badge
+                    val ammoBadgeColor = if (stats.ammo > 5) Color(0xFFFF6D00) else if (stats.ammo > 0) Color(0xFFFFAB00) else Color(0xFFFF5252)
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = ammoBadgeColor.copy(alpha = 0.22f),
+                        border = androidx.compose.foundation.BorderStroke(0.8.dp, ammoBadgeColor),
+                        modifier = Modifier.padding(end = 8.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.FlashOn,
+                                contentDescription = "Ammo",
+                                tint = ammoBadgeColor,
+                                modifier = Modifier.size(12.dp)
+                            )
+                            Spacer(modifier = Modifier.width(3.dp))
+                            Text(
+                                text = "AMMO ${stats.ammo}",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Black,
+                                color = ammoBadgeColor,
+                                letterSpacing = 0.5.sp
+                            )
+                        }
+                    }
+
                     IconButton(
                         onClick = onPauseClick,
                         modifier = Modifier
@@ -473,13 +589,58 @@ private fun TopHudBar(
             }
 
             // Active Power-ups Status Row (Presented prominently at top just like distance travelled)
-            if (stats.hasShield || stats.isScoreBoosted || stats.isBoosting) {
+            if (stats.hasShield || stats.isScoreBoosted || stats.isBoosting || stats.orbsCollected > 0) {
                 Spacer(modifier = Modifier.height(4.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
+                    if (stats.orbsCollected > 0 && !stats.isBoosting) {
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = Color(0x33FFD700),
+                            border = androidx.compose.foundation.BorderStroke(1.2.dp, Color(0xFFFFD700)),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(
+                                            imageVector = Icons.Default.Bolt,
+                                            contentDescription = "Energy Orbs",
+                                            tint = Color(0xFFFFD700),
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(
+                                            text = "ORBS ${stats.orbsCollected}/${stats.maxOrbsForBoost}",
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Black,
+                                            color = Color(0xFFFFD700),
+                                            letterSpacing = 0.5.sp
+                                        )
+                                    }
+                                }
+                                Spacer(modifier = Modifier.height(3.dp))
+                                LinearProgressIndicator(
+                                    progress = { (stats.orbsCollected.toFloat() / stats.maxOrbsForBoost.toFloat()).coerceIn(0f, 1f) },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(4.dp)
+                                        .clip(RoundedCornerShape(2.dp)),
+                                    color = Color(0xFFFFD700),
+                                    trackColor = Color(0x33FFD700)
+                                )
+                            }
+                        }
+                    }
                     if (stats.hasShield) {
                         Surface(
                             shape = RoundedCornerShape(10.dp),

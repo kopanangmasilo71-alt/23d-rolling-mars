@@ -64,6 +64,18 @@ enum class CollectibleType(
         "Instant +150 bonus points and combo refill!",
         0.0f,
         floatArrayOf(1.0f, 0.25f, 0.85f, 1.0f)
+    ),
+    ENERGY_ORB(
+        "ENERGY ORB",
+        "Collect 3 for 2x Speed Hyper Boost!",
+        3.0f,
+        floatArrayOf(1.0f, 0.85f, 0.12f, 1.0f)
+    ),
+    AMMO_PACK(
+        "PLASMA AMMO",
+        "+10 Plasma Bolts! Blast oncoming boulders!",
+        0.0f,
+        floatArrayOf(1.0f, 0.40f, 0.05f, 1.0f)
     )
 }
 
@@ -285,6 +297,26 @@ class PlayerCharacter {
     // Current 3D Character Model Variant
     var model: CharacterModelId = CharacterModelId.VANGUARD
 
+    // Shooting & Gun Mechanics
+    var isShooting: Boolean = false
+    var shootRecoil: Float = 0f
+    var muzzleFlashTimer: Float = 0f
+    var ammo: Int = 6
+    val maxAmmo: Int = 30
+    var emptyClickTimer: Float = 0f
+
+    fun addAmmo(amount: Int) {
+        ammo = (ammo + amount).coerceAtMost(maxAmmo)
+    }
+
+    fun consumeAmmo(): Boolean {
+        if (ammo > 0) {
+            ammo--
+            return true
+        }
+        return false
+    }
+
     // Physics parameters
     var forwardSpeed: Float = 10f
     var baseNormalSpeed: Float = 10f
@@ -342,6 +374,9 @@ class PlayerCharacter {
     val isBoosting: Boolean get() = boostTimer > 0f
     var landingSquash: Float = 0f
     var nearMissTilt: Float = 0f
+    var wasInAir: Boolean = false
+    var justLanded: Boolean = false
+    var runDustTimer: Float = 0f
 
     // Power-Up State Systems
     var hasShield: Boolean = false
@@ -393,6 +428,9 @@ class PlayerCharacter {
         scoreMultiplierValue = 1
         landingSquash = 0f
         nearMissTilt = 0f
+        wasInAir = false
+        justLanded = false
+        runDustTimer = 0f
         runAnimationTime = 0f
         limbSwingAngle = 0f
         thighSwingLeft = 0f
@@ -407,6 +445,11 @@ class PlayerCharacter {
         bodyBobOffset = 0f
         steerBankTilt = 0f
         headPitch = 0f
+        ammo = 6
+        emptyClickTimer = 0f
+        isShooting = false
+        shootRecoil = 0f
+        muzzleFlashTimer = 0f
     }
 
     fun triggerTumble() {
@@ -628,15 +671,21 @@ class PlayerCharacter {
             horizontalVelocity = 0f
         }
 
+        justLanded = false
         if (!isGrounded) {
+            wasInAir = true
             verticalVelocity -= gravity * dt
             position.y += verticalVelocity * dt
             if (position.y <= 0f) {
                 position.y = 0f
                 verticalVelocity = 0f
                 isGrounded = true
-                landingSquash = 0.20f // Cushion impact spring
+                justLanded = true
+                wasInAir = false
+                landingSquash = 0.32f // Cushion impact spring
             }
+        } else {
+            runDustTimer += dt
         }
 
         if (landingSquash > 0f) {
@@ -685,12 +734,59 @@ class PlayerCharacter {
             bodyBobOffset = 0.05f
         }
 
+        // Shooting Gun Pose Override: Right arm aims straight forward towards incoming obstacles!
+        if (isShooting || shootRecoil > 0.01f) {
+            armSwingRight = -84f + shootRecoil * 22f
+            elbowBendRight = 14f
+        }
+
+        if (muzzleFlashTimer > 0f) {
+            muzzleFlashTimer = (muzzleFlashTimer - dt).coerceAtLeast(0f)
+        }
+        if (emptyClickTimer > 0f) {
+            emptyClickTimer = (emptyClickTimer - dt).coerceAtLeast(0f)
+        }
+        if (shootRecoil > 0f) {
+            shootRecoil = (shootRecoil - dt * 2.8f).coerceAtLeast(0f)
+        }
+
         // Aerodynamic forward lean scales with speed
         headPitch = 6f + (forwardSpeed / baseNormalSpeed) * 6f
 
         // Banking lean into lateral turns + near-miss dynamic dodge evasion
         val targetTilt = (-horizontalVelocity / maxHorizontalSpeed) * 16f + nearMissTilt
         steerBankTilt += (targetTilt - steerBankTilt) * (14f * dt).coerceAtMost(1f)
+    }
+}
+
+class Projectile(val id: Int) {
+    var isActive: Boolean = false
+    val position = Vector3()
+    val velocity = Vector3(0f, 0f, -54f)
+    var lifetime: Float = 0f
+    val maxLifetime: Float = 1.3f
+    val radius: Float = 0.45f
+    val color = floatArrayOf(0.0f, 0.95f, 1.0f, 1.0f)
+    var trailTimer: Float = 0f
+
+    fun reset(x: Float, y: Float, z: Float) {
+        position.set(x, y, z)
+        velocity.set(0f, 0f, -54f)
+        isActive = true
+        lifetime = maxLifetime
+        trailTimer = 0f
+    }
+
+    fun update(dt: Float) {
+        if (!isActive) return
+        lifetime -= dt
+        if (lifetime <= 0f) {
+            isActive = false
+            return
+        }
+        position.x += velocity.x * dt
+        position.y += velocity.y * dt
+        position.z += velocity.z * dt
     }
 }
 
@@ -728,7 +824,7 @@ class Particle(
     val color: FloatArray = floatArrayOf(1f, 0.8f, 0.2f, 1f)
 )
 
-class ParticleSystem(val maxParticles: Int = 320) {
+class ParticleSystem(val maxParticles: Int = 750) {
     val particles = Array(maxParticles) { Particle() }
 
     fun emitBurst(origin: Vector3, count: Int, baseColor: FloatArray) {
@@ -762,35 +858,34 @@ class ParticleSystem(val maxParticles: Int = 320) {
      */
     fun emitBoulderTrailDust(origin: Vector3, radius: Float, ballSpeed: Float, baseColor: FloatArray) {
         var emitted = 0
-        val count = 2
+        val count = 3
         for (p in particles) {
             if (p.lifetime <= 0f) {
                 p.particleType = ParticleType.DUST_CLOUD
                 // Emit at ground contact patch directly behind the rolling ball
-                val offsetX = (kotlin.random.Random.nextFloat() - 0.5f) * (radius * 0.85f)
-                val offsetZ = -radius * 0.65f + (kotlin.random.Random.nextFloat() - 0.5f) * 0.25f
-                p.position.set(origin.x + offsetX, 0.07f, origin.z + offsetZ)
+                val offsetX = (kotlin.random.Random.nextFloat() - 0.5f) * (radius * 1.05f)
+                val offsetZ = -radius * 0.70f - kotlin.random.Random.nextFloat() * 0.30f
+                p.position.set(origin.x + offsetX, 0.08f, origin.z + offsetZ)
 
-                // Swirling billowing velocity (hugs the ground, spreads laterally)
-                val vx = (kotlin.random.Random.nextFloat() - 0.5f) * 2.2f
-                val vy = kotlin.random.Random.nextFloat() * 0.18f + 0.04f // Low, ground-hugging
-                val vz = -kotlin.random.Random.nextFloat() * 1.4f - 0.4f // Gentle drift behind ball
+                // Swirling billowing velocity (hugs the ground, spreads outwards)
+                val vx = (kotlin.random.Random.nextFloat() - 0.5f) * 3.4f
+                val vy = kotlin.random.Random.nextFloat() * 0.24f + 0.04f // Low, ground-hugging
+                val vz = -kotlin.random.Random.nextFloat() * 2.2f - 0.8f // Drifts behind rolling ball
                 p.velocity.set(vx, vy, vz)
 
-                p.lifetime = 0.52f + kotlin.random.Random.nextFloat() * 0.22f
+                p.lifetime = 0.68f + kotlin.random.Random.nextFloat() * 0.28f
                 p.maxLife = p.lifetime
-                // Moderately sized road dust: clearly visible, but ground-hugging so it never hides incoming balls
-                p.size = radius * (0.42f + kotlin.random.Random.nextFloat() * 0.12f)
-                p.growthRate = 0.28f + kotlin.random.Random.nextFloat() * 0.12f
+                p.size = radius * (0.48f + kotlin.random.Random.nextFloat() * 0.18f)
+                p.growthRate = 0.42f + kotlin.random.Random.nextFloat() * 0.20f
                 p.rotation = kotlin.random.Random.nextFloat() * 360f
-                p.rotSpeed = (kotlin.random.Random.nextFloat() - 0.5f) * 60f
+                p.rotSpeed = (kotlin.random.Random.nextFloat() - 0.5f) * 90f
 
-                // Warm asphalt road dust with soft transparency
-                val tint = 0.08f
-                p.color[0] = 0.88f * (1f - tint) + baseColor[0] * tint
-                p.color[1] = 0.84f * (1f - tint) + baseColor[1] * tint
-                p.color[2] = 0.78f * (1f - tint) + baseColor[2] * tint
-                p.color[3] = 0.32f // Clearly visible initial translucency, delicate so it never hides obstacles
+                // Volcanic earth dust smoke
+                val tint = 0.18f
+                p.color[0] = 0.86f * (1f - tint) + baseColor[0] * tint
+                p.color[1] = 0.76f * (1f - tint) + baseColor[1] * tint
+                p.color[2] = 0.66f * (1f - tint) + baseColor[2] * tint
+                p.color[3] = 0.32f
 
                 emitted++
                 if (emitted >= count) break
@@ -798,7 +893,7 @@ class ParticleSystem(val maxParticles: Int = 320) {
         }
 
         // Occasionally kick up a small tumbling rock gravel chip
-        if (kotlin.random.Random.nextFloat() < 0.20f) {
+        if (kotlin.random.Random.nextFloat() < 0.25f) {
             for (p in particles) {
                 if (p.lifetime <= 0f) {
                     p.particleType = ParticleType.ROCK_DEBRIS
@@ -818,6 +913,41 @@ class ParticleSystem(val maxParticles: Int = 320) {
                     p.color[0] = 0.45f; p.color[1] = 0.42f; p.color[2] = 0.40f; p.color[3] = 0.85f
                     break
                 }
+            }
+        }
+    }
+
+    /**
+     * Heavy ground collision shockwave, rock shatter, and explosive dust when a boulder slams the ground or is destroyed by blaster fire.
+     */
+    fun emitBoulderLaserShatter(origin: Vector3, radius: Float, hitColor: FloatArray) {
+        // 1. Expanding Ground Shockwave Ring
+        emitShockwave(Vector3(origin.x, 0.06f, origin.z), 24, floatArrayOf(1.0f, 0.55f, 0.10f, 0.95f))
+
+        // 2. High-energy Fiery Magma Sparks
+        emitBurst(origin, 22, floatArrayOf(1.0f, 0.75f, 0.15f))
+
+        // 3. Shattered Rock Debris Fragments
+        emitSceneryShatter(origin, 2, hitColor)
+
+        // 4. Billowing Explosive Dust Puffs
+        var dustPuffs = 0
+        for (p in particles) {
+            if (p.lifetime <= 0f) {
+                p.particleType = ParticleType.DUST_CLOUD
+                val angle = kotlin.random.Random.nextFloat() * (2f * kotlin.math.PI.toFloat())
+                val speed = kotlin.random.Random.nextFloat() * 3.5f + 1.2f
+                p.position.set(origin.x, origin.y * 0.5f, origin.z)
+                p.velocity.set(kotlin.math.cos(angle) * speed, kotlin.random.Random.nextFloat() * 1.5f + 0.5f, kotlin.math.sin(angle) * speed)
+                p.lifetime = 0.75f + kotlin.random.Random.nextFloat() * 0.35f
+                p.maxLife = p.lifetime
+                p.size = radius * 0.65f
+                p.growthRate = 0.65f
+                p.rotation = kotlin.random.Random.nextFloat() * 360f
+                p.rotSpeed = (kotlin.random.Random.nextFloat() - 0.5f) * 120f
+                p.color[0] = 0.82f; p.color[1] = 0.72f; p.color[2] = 0.62f; p.color[3] = 0.50f
+                dustPuffs++
+                if (dustPuffs >= 6) break
             }
         }
     }

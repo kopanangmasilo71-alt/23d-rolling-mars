@@ -28,7 +28,10 @@ class GamePhysicsEngine(
     // Roadside scenery objects (pine trees, cyber light towers, rock monoliths, floating crystals, sci-fi pyramids)
     val scenery = ArrayList<SceneryItem>()
 
-    val particles = ParticleSystem(180)
+    val particles = ParticleSystem(750)
+    val projectilePool = Array(24) { Projectile(it) }
+    var isShootHeld: Boolean = false
+    var shootCooldownTimer: Float = 0f
 
     // Camera
     val cameraPos = Vector3(0f, 4.2f, 7.0f)
@@ -90,10 +93,16 @@ class GamePhysicsEngine(
     )
 
     var currentSector: SectorInfo = sectors[0]
+    var orbsCollected: Int = 0
+    val maxOrbsForBoost: Int = 3
     var onSectorChanged: ((SectorInfo) -> Unit)? = null
     var onNearMissEvent: (() -> Unit)? = null
     var onCollectibleCollected: ((CollectibleType) -> Unit)? = null
     var onShieldDeflected: (() -> Unit)? = null
+    var onDodgeFeedback: ((text: String, scoreGain: Int, combo: Int) -> Unit)? = null
+    var onShootFired: (() -> Unit)? = null
+    var onBoulderDestroyed: (() -> Unit)? = null
+    var onOutOfAmmo: (() -> Unit)? = null
 
     // Spawning control
     private var spawnTimer: Float = 0f
@@ -164,6 +173,11 @@ class GamePhysicsEngine(
         for (col in collectiblePool) {
             col.isActive = false
         }
+        for (pr in projectilePool) {
+            pr.isActive = false
+        }
+        isShootHeld = false
+        shootCooldownTimer = 0f
         for (i in 0 until numSegments) {
             roadSegments[i].zStart = 60f - i * segmentLength
         }
@@ -177,6 +191,7 @@ class GamePhysicsEngine(
         ballsDodged = 0
         nearMissCount = 0
         score = 0
+        orbsCollected = 0
         comboMultiplier = 1
         comboTimer = 0f
         maxComboThisRun = 1
@@ -194,12 +209,14 @@ class GamePhysicsEngine(
 
         // Spawn initial opening wave immediately so the player sees obstacles right away!
         val initSpeed = if (isOverdriveMode) 8.5f else 6.5f
-        spawnBall(BallType.STRAIGHT, x = 0f, z = -30f, speed = initSpeed, lateralSpeed = 0f)
-        spawnBall(BallType.LEFT_TO_RIGHT, x = -(roadHalfWidth - 2.0f), z = -54f, speed = initSpeed * 1.05f, lateralSpeed = 2.2f)
-        spawnBall(BallType.STRAIGHT, x = 2.4f, z = -78f, speed = initSpeed * 1.1f, lateralSpeed = 0f)
+        spawnBall(BallType.STRAIGHT, x = 0f, z = -32f, speed = initSpeed, lateralSpeed = 0f)
+        spawnBall(BallType.LEFT_TO_RIGHT, x = -(roadHalfWidth - 2.0f), z = -56f, speed = initSpeed * 1.05f, lateralSpeed = 2.2f)
+        spawnBall(BallType.STRAIGHT, x = 2.4f, z = -80f, speed = initSpeed * 1.1f, lateralSpeed = 0f)
 
-        // Spawn an initial Energy Shield collectible nearby so player discovers the power-up early!
-        spawnCollectibleAt(CollectibleType.SHIELD, x = -1.8f, z = -42f)
+        // Spawn initial golden Energy Orb & Shield in lanes!
+        spawnCollectibleAt(CollectibleType.ENERGY_ORB, x = 0f, z = -18f)
+        spawnCollectibleAt(CollectibleType.AMMO_PACK, x = 2.2f, z = -26f)
+        spawnCollectibleAt(CollectibleType.SHIELD, x = -2.0f, z = -44f)
     }
 
     fun jump() {
@@ -211,6 +228,45 @@ class GamePhysicsEngine(
                 16,
                 player.neonGlowColor
             )
+        }
+    }
+
+    fun shoot() {
+        if (!isRunning || isGameOver) return
+        if (player.ammo <= 0) {
+            if (player.emptyClickTimer <= 0f) {
+                player.emptyClickTimer = 0.25f
+                audio.playDryFire()
+                cameraShakeMagnitude = (cameraShakeMagnitude + 0.05f).coerceAtMost(0.25f)
+                onOutOfAmmo?.invoke()
+                onDodgeFeedback?.invoke("NO AMMO! COLLECT POWER-UPS", 0, comboMultiplier)
+            }
+            return
+        }
+
+        if (shootCooldownTimer <= 0f) {
+            shootCooldownTimer = 0.18f
+            if (!player.consumeAmmo()) return
+
+            for (p in projectilePool) {
+                if (!p.isActive) {
+                    val gunX = player.position.x + 0.32f
+                    val gunY = player.position.y + 0.88f
+                    val gunZ = player.position.z - 0.85f
+                    p.reset(gunX, gunY, gunZ)
+
+                    audio.playLaserShot()
+                    particles.emitBurst(Vector3(gunX, gunY, gunZ), 8, floatArrayOf(0.0f, 0.95f, 1.0f))
+                    player.isShooting = true
+                    player.muzzleFlashTimer = 0.12f
+                    player.shootRecoil = 0.28f
+
+                    // Tactile Screen Shake on Shot!
+                    cameraShakeMagnitude = (cameraShakeMagnitude + 0.35f).coerceAtMost(0.70f)
+                    onShootFired?.invoke()
+                    break
+                }
+            }
         }
     }
 
@@ -242,10 +298,14 @@ class GamePhysicsEngine(
 
         gameTime += clampedDt
 
-        // Sound cue for braking
-        if (brakeHeld && Random.nextFloat() < 0.12f) {
-            audio.playBrake()
+        // Gun auto-fire while held and recoil cooldown
+        if (shootCooldownTimer > 0f) {
+            shootCooldownTimer -= clampedDt
         }
+        if (isShootHeld && shootCooldownTimer <= 0f) {
+            shoot()
+        }
+        player.isShooting = isShootHeld || shootCooldownTimer > 0.04f
 
         // 1. Update Sector progression
         checkSectorProgression()
@@ -260,6 +320,17 @@ class GamePhysicsEngine(
 
         // 3. Update Player
         player.update(clampedDt, leftHeld, rightHeld, brakeHeld, roadHalfWidth)
+
+        // Landing impact feel: compression, ground shockwave, sound, and camera dip
+        if (player.justLanded) {
+            audio.playLandingImpact()
+            particles.emitShockwave(
+                Vector3(player.position.x, 0.05f, player.position.z),
+                28,
+                floatArrayOf(0.85f, 0.88f, 0.95f, 0.85f)
+            )
+            cameraShakeMagnitude = (cameraShakeMagnitude + 0.22f).coerceAtMost(0.45f)
+        }
 
         // Footstep dust generation while running on ground
         if (player.isGrounded) {
@@ -363,37 +434,75 @@ class GamePhysicsEngine(
                     col.isActive = false
                     col.position.set(0f, -200f, 0f)
                     when (col.type) {
+                        CollectibleType.AMMO_PACK -> {
+                            player.addAmmo(10)
+                            audio.playAmmoPickup()
+                            score += 200 * comboMultiplier * difficultyBonus * multiplierBonus
+                            particles.emitShockwave(
+                                Vector3(player.position.x, 0.05f, player.position.z),
+                                26,
+                                col.type.color
+                            )
+                            onDodgeFeedback?.invoke("+10 PLASMA AMMO!", 200, comboMultiplier)
+                        }
                         CollectibleType.SHIELD -> {
                             player.activateShield(14f)
+                            player.addAmmo(4)
                             audio.playShieldPickup()
                             particles.emitShockwave(
                                 Vector3(player.position.x, 0.05f, player.position.z),
                                 28,
                                 col.type.color
                             )
+                            onDodgeFeedback?.invoke("SHIELD +4 AMMO!", 100, comboMultiplier)
                         }
                         CollectibleType.SPEED_BOOST -> {
                             player.applySpeedBoost(6.0f)
+                            player.addAmmo(5)
                             audio.playSpeedPad()
                             particles.emitShockwave(
                                 Vector3(player.position.x, 0.05f, player.position.z),
                                 20,
                                 col.type.color
                             )
+                            onDodgeFeedback?.invoke("BOOST +5 AMMO!", 100, comboMultiplier)
                         }
                         CollectibleType.SCORE_MULTIPLIER -> {
                             player.activateScoreMultiplier(9.0f, 2)
+                            player.addAmmo(5)
                             audio.playPowerUpPickup()
                             particles.emitShockwave(
                                 Vector3(player.position.x, 0.05f, player.position.z),
                                 24,
                                 col.type.color
                             )
+                            onDodgeFeedback?.invoke("2X MULTIPLIER +5 AMMO!", 150, comboMultiplier)
                         }
                         CollectibleType.ENERGY_CELL -> {
                             score += 150 * comboMultiplier * difficultyBonus * multiplierBonus
                             comboTimer = maxComboTimer
-                            audio.playPowerUpPickup()
+                            player.addAmmo(6)
+                            audio.playAmmoPickup()
+                            onDodgeFeedback?.invoke("+6 AMMO & REFILL!", 150, comboMultiplier)
+                        }
+                        CollectibleType.ENERGY_ORB -> {
+                            orbsCollected++
+                            player.addAmmo(2)
+                            audio.playOrbCollect(orbsCollected)
+                            score += 100 * comboMultiplier * difficultyBonus * multiplierBonus
+                            if (orbsCollected >= maxOrbsForBoost) {
+                                orbsCollected = 0
+                                player.applySpeedBoost(3.0f)
+                                player.addAmmo(6)
+                                audio.playBoostSurge()
+                                cameraShakeMagnitude = 0.35f
+                                particles.emitShockwave(
+                                    Vector3(player.position.x, 0.05f, player.position.z),
+                                    32,
+                                    floatArrayOf(0.0f, 0.95f, 1.0f, 1.0f)
+                                )
+                                onDodgeFeedback?.invoke("2x SPEED BOOST +6 AMMO!", 300, comboMultiplier)
+                            }
                         }
                     }
 
@@ -420,17 +529,60 @@ class GamePhysicsEngine(
             spawnRandomCollectible()
         }
 
+        // 5b. Update Laser Projectiles & Boulder Blast Collisions
+        for (proj in projectilePool) {
+            if (proj.isActive) {
+                proj.update(clampedDt)
+                proj.trailTimer += clampedDt
+                if (proj.trailTimer >= 0.035f) {
+                    proj.trailTimer = 0f
+                    particles.emitSpeedStreak(proj.position, 1, floatArrayOf(0.0f, 0.95f, 1.0f, 0.85f))
+                }
+
+                // Check collision with rolling boulders
+                for (ball in ballPool) {
+                    if (ball.isActive) {
+                        val dx = proj.position.x - ball.position.x
+                        val dy = proj.position.y - ball.position.y
+                        val dz = proj.position.z - ball.position.z
+                        val distSq = dx * dx + dy * dy + dz * dz
+                        val hitRadius = ball.radius + proj.radius
+                        if (distSq < hitRadius * hitRadius) {
+                            // Target destroyed!
+                            ball.isActive = false
+                            proj.isActive = false
+                            ballsDodged++
+                            val destroyScore = 250 * comboMultiplier * difficultyBonus * multiplierBonus
+                            score += destroyScore
+                            comboTimer = maxComboTimer // Refresh combo on successful hit
+
+                            audio.playBoulderExplode()
+                            particles.emitBoulderLaserShatter(ball.position, ball.radius, ball.colorA)
+                            cameraShakeMagnitude = (cameraShakeMagnitude + 0.70f).coerceAtMost(1.05f)
+                            onBoulderDestroyed?.invoke()
+                            onDodgeFeedback?.invoke("TARGET BLASTED! +250", 250, comboMultiplier)
+                            break
+                        }
+                    }
+                }
+
+                if (proj.position.z < -65f) {
+                    proj.isActive = false
+                }
+            }
+        }
+
         // 6. Update Rolling Boulders
         for (ball in ballPool) {
             if (ball.isActive) {
                 ball.update(clampedDt)
                 ball.position.z += forwardDelta
 
-                // 6a. Continuous Rolling Ground Dust & Debris Trail (spaced for clear forward visibility)
+                // 6a. Continuous Rolling Ground Dust & Debris Trail (billowing dust clouds)
                 val isNearGround = ball.position.y <= (ball.radius + 0.15f)
                 if (isNearGround) {
                     ball.trailDustTimer += clampedDt
-                    val dustInterval = if (ball.ballType == BallType.GIANT) 0.065f else 0.085f
+                    val dustInterval = if (ball.ballType == BallType.GIANT) 0.045f else 0.055f
                     if (ball.trailDustTimer >= dustInterval) {
                         ball.trailDustTimer = 0f
                         particles.emitBoulderTrailDust(ball.position, ball.radius, ball.forwardVelocity, ball.colorA)
@@ -602,7 +754,13 @@ class GamePhysicsEngine(
 
         val difficultyBonus = if (isOverdriveMode) 2 else 1
         val multBonus = if (player.isScoreBoosted) player.scoreMultiplierValue else 1
-        score += (80 * comboMultiplier * difficultyBonus * multBonus)
+        val gain = 50 * comboMultiplier * difficultyBonus * multBonus
+        score += gain
+        if (comboMultiplier >= 4) {
+            onDodgeFeedback?.invoke("PERFECT DODGE! +$gain", gain, comboMultiplier)
+        } else {
+            onDodgeFeedback?.invoke("DODGED! +$gain", gain, comboMultiplier)
+        }
     }
 
     private fun triggerNearMiss(ball: RollingBall) {
@@ -616,7 +774,8 @@ class GamePhysicsEngine(
 
         val difficultyBonus = if (isOverdriveMode) 2 else 1
         val multBonus = if (player.isScoreBoosted) player.scoreMultiplierValue else 1
-        score += (220 * comboMultiplier * difficultyBonus * multBonus)
+        val gain = 100 * comboMultiplier * difficultyBonus * multBonus
+        score += gain
 
         particles.emitBurst(
             Vector3(
@@ -627,6 +786,7 @@ class GamePhysicsEngine(
             18,
             floatArrayOf(0.0f, 0.95f, 1.0f)
         )
+        onDodgeFeedback?.invoke("NEAR MISS! +$gain", gain, comboMultiplier)
         onNearMissEvent?.invoke()
     }
 
@@ -642,9 +802,11 @@ class GamePhysicsEngine(
     fun spawnRandomCollectible() {
         val roll = Random.nextFloat()
         val type = when {
-            roll < 0.32f -> CollectibleType.SHIELD
-            roll < 0.58f -> CollectibleType.SPEED_BOOST
-            roll < 0.82f -> CollectibleType.SCORE_MULTIPLIER
+            roll < 0.28f -> CollectibleType.AMMO_PACK // Dedicated Plasma Ammo Battery!
+            roll < 0.50f -> CollectibleType.ENERGY_ORB // Golden Energy Orb!
+            roll < 0.66f -> CollectibleType.SHIELD
+            roll < 0.78f -> CollectibleType.SPEED_BOOST
+            roll < 0.89f -> CollectibleType.SCORE_MULTIPLIER
             else -> CollectibleType.ENERGY_CELL
         }
 

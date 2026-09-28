@@ -12,14 +12,17 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.ArrowUpward
+import androidx.compose.material.icons.filled.FlashOn
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -53,57 +56,66 @@ fun TouchController(
     onLeftChange: (Boolean) -> Unit,
     onRightChange: (Boolean) -> Unit,
     onJump: () -> Unit,
-    onBrakeChange: (Boolean) -> Unit,
+    onShootChange: (Boolean) -> Unit = {},
+    onShoot: () -> Unit = {},
+    onBrakeChange: (Boolean) -> Unit = {},
+    ammo: Int = 10,
     modifier: Modifier = Modifier
 ) {
     Row(
         modifier = modifier
             .fillMaxWidth()
             .testTag("touch_controller"),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.Bottom
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        // FAR LEFT: Steer Left Button
+        // 1. LEFT Button
         TouchPadButton(
             icon = Icons.AutoMirrored.Filled.ArrowBack,
             label = "LEFT",
             testTag = "btn_steer_left",
-            size = 72.dp,
+            size = 64.dp,
             activeColor = Color(0xFF00E5FF),
             onHoldChange = onLeftChange
         )
 
-        // CENTER: Action Buttons (BRAKE & JUMP)
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            TouchPadButton(
-                icon = Icons.Default.Speed,
-                label = "BRAKE",
-                testTag = "btn_brake",
-                size = 66.dp,
-                activeColor = Color(0xFFFF5252),
-                onHoldChange = onBrakeChange
-            )
+        androidx.compose.foundation.layout.Spacer(modifier = Modifier.width(12.dp))
 
-            TouchPadButton(
-                icon = Icons.Default.ArrowUpward,
-                label = "JUMP",
-                testTag = "btn_jump",
-                size = 72.dp,
-                activeColor = Color(0xFFFFD600),
-                onHoldChange = {},
-                onPressDown = onJump
-            )
-        }
+        // 2. SHOOT Button with live Ammo counter & Empty indicator
+        val hasAmmo = ammo > 0
+        TouchPadButton(
+            icon = Icons.Default.FlashOn,
+            label = if (hasAmmo) "SHOOT" else "EMPTY",
+            testTag = "btn_shoot",
+            size = 64.dp,
+            activeColor = if (hasAmmo) Color(0xFFFF3D00) else Color(0xFFFF5252),
+            badge = "$ammo",
+            badgeColor = if (hasAmmo) Color(0xFFFF6D00) else Color(0xFFD50000),
+            onHoldChange = onShootChange,
+            onPressDown = onShoot
+        )
 
-        // FAR RIGHT: Steer Right Button
+        androidx.compose.foundation.layout.Spacer(modifier = Modifier.width(12.dp))
+
+        // 3. JUMP Button
+        TouchPadButton(
+            icon = Icons.Default.ArrowUpward,
+            label = "JUMP",
+            testTag = "btn_jump",
+            size = 64.dp,
+            activeColor = Color(0xFF00E5FF),
+            onHoldChange = {},
+            onPressDown = onJump
+        )
+
+        androidx.compose.foundation.layout.Spacer(modifier = Modifier.width(12.dp))
+
+        // 4. RIGHT Button
         TouchPadButton(
             icon = Icons.AutoMirrored.Filled.ArrowForward,
             label = "RIGHT",
             testTag = "btn_steer_right",
-            size = 72.dp,
+            size = 64.dp,
             activeColor = Color(0xFF00E5FF),
             onHoldChange = onRightChange
         )
@@ -123,7 +135,9 @@ fun TouchPadButton(
     onHoldChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
     onPressDown: (() -> Unit)? = null,
-    size: Dp = 70.dp
+    size: Dp = 64.dp,
+    badge: String? = null,
+    badgeColor: Color = Color(0xFFFF6D00)
 ) {
     var isPressed by remember { mutableStateOf(false) }
 
@@ -134,12 +148,12 @@ fun TouchPadButton(
     )
 
     val borderColor by animateColorAsState(
-        targetValue = if (isPressed) activeColor else Color(0x55FFFFFF),
+        targetValue = if (isPressed) activeColor else Color(0x6600E5FF),
         label = "touchBtnBorder"
     )
 
     val bgColor by animateColorAsState(
-        targetValue = if (isPressed) activeColor.copy(alpha = 0.35f) else Color(0x88121728),
+        targetValue = if (isPressed) activeColor.copy(alpha = 0.35f) else Color(0x73091325),
         label = "touchBtnBg"
     )
 
@@ -149,7 +163,7 @@ fun TouchPadButton(
             .scale(scale)
             .clip(CircleShape)
             .background(bgColor)
-            .border(2.5.dp, borderColor, CircleShape)
+            .border(2.dp, borderColor, CircleShape)
             .testTag(testTag)
             .pointerInput(Unit) {
                 awaitEachGesture {
@@ -173,14 +187,33 @@ fun TouchPadButton(
                 imageVector = icon,
                 contentDescription = label,
                 tint = if (isPressed) activeColor else Color.White,
-                modifier = Modifier.size(28.dp)
+                modifier = Modifier.size(24.dp)
             )
             Text(
                 text = label,
-                fontSize = 10.sp,
-                fontWeight = FontWeight.Bold,
-                color = if (isPressed) activeColor else Color(0xCCFFFFFF)
+                fontSize = 9.sp,
+                fontWeight = FontWeight.Black,
+                letterSpacing = 0.5.sp,
+                color = if (isPressed) activeColor else Color(0xDDFFFFFF)
             )
+        }
+
+        if (badge != null) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(top = 4.dp, end = 6.dp)
+                    .clip(CircleShape)
+                    .background(badgeColor)
+                    .padding(horizontal = 4.dp, vertical = 1.dp)
+            ) {
+                Text(
+                    text = badge,
+                    fontSize = 8.sp,
+                    fontWeight = FontWeight.Black,
+                    color = Color.White
+                )
+            }
         }
     }
 }
