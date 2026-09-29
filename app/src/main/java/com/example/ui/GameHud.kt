@@ -69,13 +69,15 @@ fun GameHud(
     modifier: Modifier = Modifier
 ) {
     LaunchedEffect(Unit) {
-        while (true) {
-            viewModel.pollStats()
-            delay(35)
+        if (!viewModel.isGameLoopRunning) {
+            viewModel.startGameLoop()
         }
     }
 
     val stats by viewModel.liveStats.collectAsStateWithLifecycle()
+    val currentScore by viewModel.currentScore.collectAsStateWithLifecycle()
+    val gameSpeed by viewModel.gameSpeed.collectAsStateWithLifecycle()
+    val gameState by viewModel.gameState.collectAsStateWithLifecycle()
     val sectorAlert by viewModel.sectorAnnouncement.collectAsStateWithLifecycle()
     val threatAlert by viewModel.threatEscalationAnnouncement.collectAsStateWithLifecycle()
     val timeOfDayAlert by viewModel.timeOfDayAnnouncement.collectAsStateWithLifecycle()
@@ -131,6 +133,8 @@ fun GameHud(
         // TOP HUD BAR
         TopHudBar(
             stats = stats,
+            currentScore = currentScore,
+            gameSpeed = gameSpeed,
             onPauseClick = { viewModel.pauseGame() },
             modifier = Modifier
                 .align(Alignment.TopCenter)
@@ -483,7 +487,9 @@ fun GameHud(
 private fun TopHudBar(
     stats: LiveGameStats,
     onPauseClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    currentScore: Int = stats.score,
+    gameSpeed: Float = stats.forwardSpeed
 ) {
     Surface(
         modifier = modifier,
@@ -645,7 +651,7 @@ private fun TopHudBar(
                     }
 
                     Text(
-                        text = "${String.format("%.1f", stats.forwardSpeed)} m/s",
+                        text = "${String.format("%.1f", gameSpeed)} m/s",
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color(0xFFB0BEC5),
@@ -1016,7 +1022,7 @@ private fun TopHudBar(
                         letterSpacing = 1.sp
                     )
                     Text(
-                        text = "${stats.score}",
+                        text = "$currentScore",
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Black,
                         color = if (stats.hasBeatenHighScore) Color(0xFFFFD54F) else Color.White

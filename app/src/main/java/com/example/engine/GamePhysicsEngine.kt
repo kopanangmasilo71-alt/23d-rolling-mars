@@ -709,19 +709,19 @@ class GamePhysicsEngine(
 
         // 9. Camera Shake Decay & Follow Camera
         if (cameraShakeMagnitude > 0f) {
-            cameraShakeMagnitude = (cameraShakeMagnitude - clampedDt * 2.8f).coerceAtLeast(0f)
+            cameraShakeMagnitude = (cameraShakeMagnitude - clampedDt * 3.5f).coerceAtLeast(0f)
         }
 
-        val shakeX = (Random.nextFloat() - 0.5f) * cameraShakeMagnitude
-        val shakeY = (Random.nextFloat() - 0.5f) * cameraShakeMagnitude
+        val shakeX = (Random.nextFloat() - 0.5f) * cameraShakeMagnitude * 0.65f
+        val shakeY = (Random.nextFloat() - 0.5f) * cameraShakeMagnitude * 0.65f
 
         val targetCamX = player.position.x + shakeX
-        val speedCamPullback = (player.forwardSpeed / player.baseNormalSpeed - 1f) * 1.5f
-        val targetCamY = player.position.y * 0.40f + 3.1f + player.bodyBobOffset * 0.4f + shakeY
+        val speedCamPullback = (player.forwardSpeed / player.baseNormalSpeed - 1f) * 1.2f
+        val targetCamY = player.position.y * 0.40f + 3.1f + player.bodyBobOffset * 0.08f + shakeY
         val targetCamZ = player.position.z + 5.2f + speedCamPullback
 
-        val xLerp = (28.0f * clampedDt).coerceAtMost(1f)
-        val yzLerp = (12.0f * clampedDt).coerceAtMost(1f)
+        val xLerp = (16.0f * clampedDt).coerceAtMost(1f)
+        val yzLerp = (10.0f * clampedDt).coerceAtMost(1f)
         cameraPos.x += (targetCamX - cameraPos.x) * xLerp
         cameraPos.y += (targetCamY - cameraPos.y) * yzLerp
         cameraPos.z += (targetCamZ - cameraPos.z) * yzLerp

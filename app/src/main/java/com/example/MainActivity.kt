@@ -54,6 +54,7 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun RollRunnerApp(viewModel: GameViewModel) {
     val currentScreen by viewModel.currentScreen.collectAsStateWithLifecycle()
+    val isGameOver by viewModel.isGameOver.collectAsStateWithLifecycle()
     val shakeTrigger by viewModel.screenShakeTrigger.collectAsStateWithLifecycle()
     val shakeIntensity by viewModel.screenShakeIntensity.collectAsStateWithLifecycle()
 
@@ -106,11 +107,11 @@ fun RollRunnerApp(viewModel: GameViewModel) {
 
     // Handle back button for sub-screens
     BackHandler(enabled = currentScreen != AppScreen.MENU) {
-        when (currentScreen) {
-            AppScreen.PLAYING -> viewModel.pauseGame()
-            AppScreen.PAUSED -> viewModel.resumeGame()
-            AppScreen.GAME_OVER -> viewModel.goToMenu()
-            AppScreen.MENU -> { /* default exit */ }
+        when {
+            isGameOver || currentScreen == AppScreen.GAME_OVER -> viewModel.goToMenu()
+            currentScreen == AppScreen.PLAYING -> viewModel.pauseGame()
+            currentScreen == AppScreen.PAUSED -> viewModel.resumeGame()
+            else -> { /* default exit */ }
         }
     }
 
@@ -127,19 +128,19 @@ fun RollRunnerApp(viewModel: GameViewModel) {
         GameSurfaceView(renderer = viewModel.renderer)
 
         // UI Layer
-        when (currentScreen) {
-            AppScreen.MENU -> {
-                MainMenu(viewModel = viewModel)
+        when {
+            isGameOver || currentScreen == AppScreen.GAME_OVER -> {
+                GameOverOverlay(viewModel = viewModel)
             }
-            AppScreen.PLAYING -> {
-                GameHud(viewModel = viewModel)
-            }
-            AppScreen.PAUSED -> {
+            currentScreen == AppScreen.PAUSED -> {
                 GameHud(viewModel = viewModel)
                 PauseOverlay(viewModel = viewModel)
             }
-            AppScreen.GAME_OVER -> {
-                GameOverOverlay(viewModel = viewModel)
+            currentScreen == AppScreen.PLAYING -> {
+                GameHud(viewModel = viewModel)
+            }
+            else -> {
+                MainMenu(viewModel = viewModel)
             }
         }
     }

@@ -16,12 +16,15 @@ import com.example.engine.GameAudio
 import com.example.engine.GamePhysicsEngine
 import com.example.engine.GameRenderer
 import com.example.engine.SectorInfo
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 enum class AppScreen {
@@ -95,6 +98,84 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _currentScreen = MutableStateFlow(AppScreen.MENU)
     val currentScreen: StateFlow<AppScreen> = _currentScreen.asStateFlow()
+
+    private val _gameState = MutableStateFlow(GameState())
+    val gameState: StateFlow<GameState> = _gameState.asStateFlow()
+
+    private val _currentScore = MutableStateFlow(0)
+    val currentScore: StateFlow<Int> = _currentScore.asStateFlow()
+
+    private val _isGameOver = MutableStateFlow(false)
+    val isGameOver: StateFlow<Boolean> = _isGameOver.asStateFlow()
+    val gameOverStatus: StateFlow<Boolean> = _isGameOver
+
+    private val _gameSpeed = MutableStateFlow(10.0f)
+    val gameSpeed: StateFlow<Float> = _gameSpeed.asStateFlow()
+
+    fun updateScore(score: Int) {
+        _currentScore.value = score
+        _gameState.update { it.copy(currentScore = score) }
+    }
+
+    fun addScore(points: Int) {
+        val newScore = _currentScore.value + points
+        updateScore(newScore)
+    }
+
+    fun setGameOver(isOver: Boolean) {
+        _isGameOver.value = isOver
+        if (isOver) {
+            _currentScreen.value = AppScreen.GAME_OVER
+        }
+        _gameState.update {
+            it.copy(
+                isGameOver = isOver,
+                isPlaying = if (isOver) false else it.isPlaying
+            )
+        }
+    }
+
+    fun setGameSpeed(speed: Float) {
+        _gameSpeed.value = speed
+        _gameState.update { it.copy(gameSpeed = speed) }
+    }
+
+    private var gameLoopJob: Job? = null
+    val isGameLoopRunning: Boolean
+        get() = gameLoopJob?.isActive == true
+
+    /**
+     * Starts a frame-independent game loop using a Coroutine that continuously
+     * updates the game state in the ViewModel, accounting for speed increments.
+     */
+    fun startGameLoop(tickDelayMs: Long = 16L) {
+        stopGameLoop()
+        gameLoopJob = viewModelScope.launch {
+            var lastTimeNanos = System.nanoTime()
+            while (isActive && _currentScreen.value == AppScreen.PLAYING && !_isGameOver.value) {
+                val now = System.nanoTime()
+                val dt = if (lastTimeNanos != 0L) {
+                    ((now - lastTimeNanos) / 1_000_000_000.0f).coerceIn(0.001f, 0.1f)
+                } else {
+                    0.016f
+                }
+                lastTimeNanos = now
+
+                pollStats(dt)
+
+                delay(tickDelayMs)
+            }
+        }
+    }
+
+    fun stopGameLoop() {
+        gameLoopJob?.cancel()
+        gameLoopJob = null
+    }
+
+    fun resetGame() {
+        startGame()
+    }
 
     private val _liveStats = MutableStateFlow(LiveGameStats())
     val liveStats: StateFlow<LiveGameStats> = _liveStats.asStateFlow()
@@ -296,6 +377,16 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
 
     fun startGame() {
         _isNewHighScore.value = false
+        _isGameOver.value = false
+        _currentScore.value = 0
+        _gameSpeed.value = 10.0f
+        _gameState.value = GameState(
+            currentScore = 0,
+            isGameOver = false,
+            gameSpeed = 10.0f,
+            isPlaying = true,
+            isPaused = false
+        )
         _sectorAnnouncement.value = null
         _threatEscalationAnnouncement.value = null
         _nearMissFlash.value = false
@@ -307,12 +398,15 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
         val model = com.example.engine.CharacterModelId.fromId(equippedId)
         physics.startNewGame(model.id, _isOverdriveMode.value)
         _currentScreen.value = AppScreen.PLAYING
+        startGameLoop()
     }
 
     fun pauseGame() {
         if (_currentScreen.value == AppScreen.PLAYING) {
             physics.isRunning = false
             _currentScreen.value = AppScreen.PAUSED
+            _gameState.update { it.copy(isPaused = true) }
+            stopGameLoop()
         }
     }
 
@@ -320,13 +414,17 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
         if (_currentScreen.value == AppScreen.PAUSED) {
             physics.isRunning = true
             _currentScreen.value = AppScreen.PLAYING
+            _gameState.update { it.copy(isPaused = false) }
+            startGameLoop()
         }
     }
 
     fun goToMenu() {
+        stopGameLoop()
         physics.isRunning = false
         physics.clearAllTrackEntities()
         _currentScreen.value = AppScreen.MENU
+        _gameState.update { it.copy(isPlaying = false, isPaused = false) }
     }
 
     fun restartGame() {
@@ -416,7 +514,7 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun pollStats() {
+    fun pollStats(dt: Float = 0.016f) {
         if (_currentScreen.value == AppScreen.PLAYING) {
             val best = topRecord.value?.score ?: 0
             val currentScore = physics.score
@@ -438,13 +536,31 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
             val multRem = if (physics.player.isScoreBoosted) kotlin.math.ceil(physics.player.scoreMultiplierTimer).toInt() else 0
             val boostRem = if (physics.player.isBoosting) kotlin.math.ceil(physics.player.boostTimer).toInt() else 0
 
+            val calculatedSpeed = physics.player.forwardSpeed * physics.currentSector.speedMultiplier
+            _currentScore.value = currentScore
+            _gameSpeed.value = calculatedSpeed
+            _isGameOver.value = false
+            _gameState.value = GameState(
+                currentScore = currentScore,
+                isGameOver = false,
+                gameSpeed = calculatedSpeed,
+                isPaused = false,
+                isPlaying = true,
+                distanceMeters = physics.distanceTraveled.toInt(),
+                ballsDodged = physics.ballsDodged,
+                comboMultiplier = physics.comboMultiplier,
+                sectorName = physics.currentSector.name,
+                speedMultiplier = physics.dynamicSpeedMultiplier,
+                elapsedTimeSeconds = physics.runDuration
+            )
+
             _liveStats.value = LiveGameStats(
                 score = currentScore,
                 distanceMeters = physics.distanceTraveled.toInt(),
                 ballsDodged = physics.ballsDodged,
                 comboMultiplier = physics.comboMultiplier,
                 comboProgress = if (physics.comboTimer > 0f) (physics.comboTimer / physics.maxComboTimer).coerceIn(0f, 1f) else 0f,
-                forwardSpeed = physics.player.forwardSpeed * physics.currentSector.speedMultiplier,
+                forwardSpeed = calculatedSpeed,
                 isBraking = renderer.isBrakeHeld,
                 isBoosting = physics.player.isBoosting,
                 boostProgress = if (physics.player.isBoosting) (physics.player.boostTimer / 4.0f).coerceIn(0f, 1f) else 0f,
@@ -516,6 +632,21 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
         val characterBonus = if (physics.player.model == com.example.engine.CharacterModelId.CHRONOS) 1.25f else 1.0f
         val pointsEarned = ((basePoints + dodgeBonus + comboBonus) * characterBonus).toInt()
 
+        stopGameLoop()
+        _isGameOver.value = true
+        _currentScore.value = score
+        _gameState.update {
+            it.copy(
+                currentScore = score,
+                isGameOver = true,
+                isPlaying = false,
+                distanceMeters = distance,
+                ballsDodged = dodged,
+                comboMultiplier = maxCombo,
+                sectorName = sectorName
+            )
+        }
+
         viewModelScope.launch {
             repository.addPoints(pointsEarned)
             val updatedProfile = repository.getOrCreateProfile()
@@ -578,5 +709,10 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
         } catch (_: Throwable) {
             // Ignore if vibration unavailable
         }
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        stopGameLoop()
     }
 }

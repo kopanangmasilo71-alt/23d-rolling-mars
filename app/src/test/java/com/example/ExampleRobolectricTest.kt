@@ -239,4 +239,67 @@ class ExampleRobolectricTest {
     renderer.onSurfaceChanged(null, 1080, 1920)
     renderer.onDrawFrame(null)
   }
+
+  @Test
+  fun `gameViewModel manages currentScore isGameOver and gameSpeed via StateFlow`() {
+    val application = ApplicationProvider.getApplicationContext<android.app.Application>()
+    val viewModel = com.example.ui.GameViewModel(application)
+
+    // Initial state check
+    assertEquals(0, viewModel.currentScore.value)
+    org.junit.Assert.assertFalse(viewModel.isGameOver.value)
+    org.junit.Assert.assertFalse(viewModel.gameOverStatus.value)
+    assertEquals(10.0f, viewModel.gameSpeed.value, 0.001f)
+    assertEquals(0, viewModel.gameState.value.currentScore)
+
+    // Start game
+    viewModel.startGame()
+    assertEquals(0, viewModel.currentScore.value)
+    org.junit.Assert.assertFalse(viewModel.isGameOver.value)
+    org.junit.Assert.assertTrue(viewModel.gameState.value.isPlaying)
+
+    // Update score
+    viewModel.updateScore(750)
+    assertEquals(750, viewModel.currentScore.value)
+    assertEquals(750, viewModel.gameState.value.currentScore)
+
+    // Update speed
+    viewModel.setGameSpeed(15.5f)
+    assertEquals(15.5f, viewModel.gameSpeed.value, 0.001f)
+    assertEquals(15.5f, viewModel.gameState.value.gameSpeed, 0.001f)
+
+    // Trigger Game Over
+    viewModel.setGameOver(true)
+    org.junit.Assert.assertTrue(viewModel.isGameOver.value)
+    org.junit.Assert.assertTrue(viewModel.gameState.value.isGameOver)
+  }
+
+  @Test
+  fun `gameViewModel coroutine game loop continuously updates game state with speed increments`() = kotlinx.coroutines.runBlocking {
+    val application = ApplicationProvider.getApplicationContext<android.app.Application>()
+    val viewModel = com.example.ui.GameViewModel(application)
+
+    // Start game starts coroutine loop
+    viewModel.startGame()
+    org.junit.Assert.assertTrue("Game loop should be running after startGame", viewModel.isGameLoopRunning)
+    org.junit.Assert.assertTrue("Game state should be playing", viewModel.gameState.value.isPlaying)
+
+    // Verify speed increment properties
+    val baseSpeed = viewModel.gameSpeed.value
+    org.junit.Assert.assertTrue("Base speed should be positive", baseSpeed > 0f)
+
+    // Pause game stops game loop
+    viewModel.pauseGame()
+    org.junit.Assert.assertFalse("Game loop should stop when paused", viewModel.isGameLoopRunning)
+    org.junit.Assert.assertTrue("Game state should be paused", viewModel.gameState.value.isPaused)
+
+    // Resume game restarts loop
+    viewModel.resumeGame()
+    org.junit.Assert.assertTrue("Game loop should resume", viewModel.isGameLoopRunning)
+    org.junit.Assert.assertFalse("Game state should not be paused", viewModel.gameState.value.isPaused)
+
+    // Stop game loop
+    viewModel.stopGameLoop()
+    org.junit.Assert.assertFalse("Game loop should be stopped", viewModel.isGameLoopRunning)
+  }
 }

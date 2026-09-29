@@ -734,7 +734,7 @@ class PlayerCharacter {
         val targetHorizontalVelocity = targetInput * dynamicMaxHorizontalSpeed
 
         // Smooth critically damped acceleration and deceleration (no jarring linear snap)
-        val steerResponseRate = if (targetInput != 0f) 18.0f else 22.0f
+        val steerResponseRate = if (targetInput != 0f) 15.0f else 18.0f
         horizontalVelocity += (targetHorizontalVelocity - horizontalVelocity) * (steerResponseRate * dt).coerceAtMost(1f)
 
         position.x += horizontalVelocity * dt
@@ -760,7 +760,7 @@ class PlayerCharacter {
                 isGrounded = true
                 justLanded = true
                 wasInAir = false
-                landingSquash = 0.32f // Cushion impact spring
+                landingSquash = 0.22f // Cushion impact spring
             }
         } else {
             runDustTimer += dt
@@ -775,11 +775,10 @@ class PlayerCharacter {
         }
 
         // Realistic Step & Biomechanical Animation Synchronized with Exact Road Movement
-        // Realistic step length: One 2-step stride cycle covers 2.44m of ground
-        // Therefore angular velocity dθ/dt = (π / 1.22) * effectiveForwardSpeed ≈ 2.575 * effectiveForwardSpeed
-        // Foot motion relative to body matches road scroll rate -> ZERO FOOT SLIDING!
-        val stepStrideDist = 1.22f // Distance covered per single step in meters
-        val angularStrideRate = (Math.PI.toFloat() / stepStrideDist) * effectiveForwardSpeed
+        // Natural athletic running cadence: smooth ~2.3 Hz cycle without frantic flailing
+        val baseCadence = 14.2f
+        val speedRatio = (effectiveForwardSpeed / baseNormalSpeed).coerceIn(0.5f, 2.2f)
+        val angularStrideRate = baseCadence * (0.75f + 0.25f * speedRatio)
         runAnimationTime += dt * angularStrideRate
 
         // Detect footstep plants for synchronized dust puffs and tactile feel
@@ -796,42 +795,43 @@ class PlayerCharacter {
         val strideSin = sin(runAnimationTime)
 
         if (isGrounded) {
-            // Stride amplitude opens up naturally as forward speed increases
-            val strideAmplitude = 34f + (effectiveForwardSpeed / baseNormalSpeed).coerceIn(0.5f, 2.2f) * 6.5f
+            // Smooth, controlled stride amplitude - eliminates aggressive limb flailing
+            val strideAmplitude = 22f + (speedRatio - 1f).coerceIn(-0.3f, 1.0f) * 4.5f
             limbSwingAngle = strideSin * strideAmplitude
             thighSwingLeft = strideSin * strideAmplitude
             thighSwingRight = -thighSwingLeft
 
-            // Dynamic Knee Flexion: knee bends as thigh swings back into trailing step
-            kneeBendLeft = if (thighSwingLeft > 0f) (thighSwingLeft * 1.55f).coerceAtMost(70f) else 4f
-            kneeBendRight = if (thighSwingRight > 0f) (thighSwingRight * 1.55f).coerceAtMost(70f) else 4f
+            // Natural, graceful Knee Flexion
+            kneeBendLeft = if (thighSwingLeft > 0f) (thighSwingLeft * 1.15f).coerceIn(4f, 46f) else 4f
+            kneeBendRight = if (thighSwingRight > 0f) (thighSwingRight * 1.15f).coerceIn(4f, 46f) else 4f
 
-            // Arm swing counter-balances legs: left arm moves forward with right leg
-            armSwingLeft = -thighSwingLeft * 0.85f
+            // Smooth arm swing counter-balances legs comfortably
+            armSwingLeft = -thighSwingLeft * 0.65f
             armSwingRight = -armSwingLeft
 
-            // Forearms stay bent in high-performance runner posture (~75-85 deg)
-            elbowBendLeft = 76f + strideSin * 10f
-            elbowBendRight = 76f - strideSin * 10f
+            // Controlled forearms posture
+            elbowBendLeft = 74f + strideSin * 5f
+            elbowBendRight = 74f - strideSin * 5f
 
-            torsoTwist = -strideSin * 6.5f
+            // Subtle athletic torso twist instead of wild swaying
+            torsoTwist = -strideSin * 2.8f
 
-            // Natural 2-beat vertical body bob: dips as foot plants mid-stance, pushes up into flight apex
-            val bobAmplitude = 0.045f + (effectiveForwardSpeed / baseNormalSpeed).coerceIn(0.5f, 2.0f) * 0.025f
+            // Gentle, grounded vertical body bounce (subtle micro-bobbing instead of violent jitter)
+            val bobAmplitude = 0.016f + (speedRatio - 1f).coerceIn(0f, 1.0f) * 0.008f
             val verticalStrideBounce = -cos(runAnimationTime * 2f) * bobAmplitude
-            bodyBobOffset = verticalStrideBounce - landingSquash * 0.35f
+            bodyBobOffset = verticalStrideBounce - landingSquash * 0.22f
         } else {
             // Mid-air Jump Pose (Athletic hurdle tuck & reach)
-            thighSwingLeft = 35f
-            thighSwingRight = -25f
-            kneeBendLeft = 55f
-            kneeBendRight = 45f
-            armSwingLeft = -40f
-            armSwingRight = -40f
-            elbowBendLeft = 90f
-            elbowBendRight = 90f
+            thighSwingLeft = 28f
+            thighSwingRight = -20f
+            kneeBendLeft = 45f
+            kneeBendRight = 35f
+            armSwingLeft = -30f
+            armSwingRight = -30f
+            elbowBendLeft = 85f
+            elbowBendRight = 85f
             torsoTwist = 0f
-            bodyBobOffset = 0.05f
+            bodyBobOffset = 0.03f
         }
 
         // Shooting Gun Pose Override: Right arm aims straight forward towards incoming obstacles!
@@ -850,17 +850,17 @@ class PlayerCharacter {
             shootRecoil = (shootRecoil - dt * 2.8f).coerceAtLeast(0f)
         }
 
-        // Aerodynamic forward lean scales smoothly with speed
-        val targetPitch = 4f + (effectiveForwardSpeed / baseNormalSpeed).coerceIn(0.5f, 2.2f) * 5.5f
-        headPitch += (targetPitch - headPitch) * (12f * dt).coerceAtMost(1f)
+        // Aerodynamic forward lean: smooth, modest angle (3.5 to 6.5 degrees)
+        val targetPitch = 3.5f + (speedRatio - 1f).coerceIn(0f, 1.2f) * 2.5f
+        headPitch += (targetPitch - headPitch) * (8f * dt).coerceAtMost(1f)
 
-        // Banking lean into lateral turns + near-miss dynamic dodge evasion
-        val targetTilt = (-horizontalVelocity / dynamicMaxHorizontalSpeed) * 16f + nearMissTilt
-        steerBankTilt += (targetTilt - steerBankTilt) * (15f * dt).coerceAtMost(1f)
+        // Smooth lateral banking tilt (max 9 degrees instead of 16 degrees)
+        val targetTilt = (-horizontalVelocity / dynamicMaxHorizontalSpeed) * 9.0f + nearMissTilt * 0.6f
+        steerBankTilt += (targetTilt - steerBankTilt) * (10f * dt).coerceAtMost(1f)
 
-        // Athletic body yaw: character turns slightly into the direction of lateral movement
-        val targetYaw = (-horizontalVelocity / dynamicMaxHorizontalSpeed) * 12f
-        bodyYaw += (targetYaw - bodyYaw) * (18f * dt).coerceAtMost(1f)
+        // Athletic body yaw: subtle turn into lateral movement (max 6 degrees instead of 12 degrees)
+        val targetYaw = (-horizontalVelocity / dynamicMaxHorizontalSpeed) * 6.0f
+        bodyYaw += (targetYaw - bodyYaw) * (10f * dt).coerceAtMost(1f)
     }
 }
 

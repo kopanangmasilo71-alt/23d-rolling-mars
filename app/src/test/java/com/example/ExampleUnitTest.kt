@@ -492,4 +492,155 @@ class ExampleUnitTest {
         assertEquals(4, com.example.engine.DynamicDifficultyTiers.getThreatForDuration(105f).level)
         assertEquals(5, com.example.engine.DynamicDifficultyTiers.getThreatForDuration(160f).level)
     }
+
+    @Test
+    fun gameStateViewModel_initialState_hasDefaultValues() {
+        val vm = com.example.ui.GameStateViewModel()
+        assertEquals(0, vm.currentScore.value)
+        assertEquals(0, vm.gameState.value.currentScore)
+        assertEquals(0, vm.gameState.value.score)
+        assertFalse(vm.isGameOver.value)
+        assertFalse(vm.gameOverStatus.value)
+        assertFalse(vm.gameState.value.isGameOver)
+        assertFalse(vm.gameState.value.gameOverStatus)
+        assertEquals(10.0f, vm.gameSpeed.value, 0.001f)
+        assertEquals(10.0f, vm.gameState.value.gameSpeed, 0.001f)
+        assertEquals(10.0f, vm.gameState.value.speed, 0.001f)
+    }
+
+    @Test
+    fun gameStateViewModel_updateScore_emitsNewScoreAndGameState() {
+        val vm = com.example.ui.GameStateViewModel()
+        vm.updateScore(350)
+        assertEquals(350, vm.currentScore.value)
+        assertEquals(350, vm.gameState.value.currentScore)
+
+        vm.addScore(150)
+        assertEquals(500, vm.currentScore.value)
+        assertEquals(500, vm.gameState.value.currentScore)
+    }
+
+    @Test
+    fun gameStateViewModel_setGameOver_emitsGameOverStatusAndGameState() {
+        val vm = com.example.ui.GameStateViewModel()
+        assertFalse(vm.isGameOver.value)
+
+        vm.setGameOver(true)
+        assertTrue(vm.isGameOver.value)
+        assertTrue(vm.gameOverStatus.value)
+        assertTrue(vm.gameState.value.isGameOver)
+        assertFalse(vm.gameState.value.isPlaying)
+
+        vm.setGameOver(false)
+        assertFalse(vm.isGameOver.value)
+        assertFalse(vm.gameState.value.isGameOver)
+    }
+
+    @Test
+    fun gameStateViewModel_setGameSpeed_emitsUpdatedSpeedAndGameState() {
+        val vm = com.example.ui.GameStateViewModel()
+        vm.setGameSpeed(18.5f)
+        assertEquals(18.5f, vm.gameSpeed.value, 0.001f)
+        assertEquals(18.5f, vm.gameState.value.gameSpeed, 0.001f)
+        assertEquals(18.5f, vm.gameState.value.speed, 0.001f)
+    }
+
+    @Test
+    fun gameStateViewModel_startGame_resetsStateProperly() {
+        val vm = com.example.ui.GameStateViewModel()
+        vm.updateScore(1200)
+        vm.setGameOver(true)
+        vm.setGameSpeed(25.0f)
+
+        vm.startGame()
+        assertEquals(0, vm.currentScore.value)
+        assertFalse(vm.isGameOver.value)
+        assertEquals(10.0f, vm.gameSpeed.value, 0.001f)
+        assertTrue(vm.gameState.value.isPlaying)
+        assertFalse(vm.gameState.value.isPaused)
+    }
+
+    @Test
+    fun gameStateViewModel_pauseAndResume_updatesGameStateProperly() {
+        val vm = com.example.ui.GameStateViewModel()
+        vm.startGame()
+        assertFalse(vm.gameState.value.isPaused)
+
+        vm.pauseGame()
+        assertTrue(vm.gameState.value.isPaused)
+
+        vm.resumeGame()
+        assertFalse(vm.gameState.value.isPaused)
+    }
+
+    @Test
+    fun gameStateViewModel_frameIndependentUpdate_scalesSpeedAndScoreDeterministically() {
+        val vm = com.example.ui.GameStateViewModel().apply {
+            baseSpeed = 10.0f
+            speedIncrementRate = 0.5f // +0.5 m/s per second
+            maxGameSpeed = 30.0f
+            scoreMultiplier = 2.0f
+        }
+        vm.startGame()
+        vm.stopGameLoop() // Test deterministic steps without background loop
+
+        assertEquals(10.0f, vm.gameSpeed.value, 0.001f)
+        assertEquals(0, vm.currentScore.value)
+
+        // Step 1: 2.0 seconds elapsed
+        vm.updateGameStep(2.0f)
+        val expectedSpeedStep1 = 10.0f + 0.5f * 2.0f // 11.0f
+        assertEquals(expectedSpeedStep1, vm.gameSpeed.value, 0.001f)
+        assertEquals(expectedSpeedStep1, vm.gameState.value.gameSpeed, 0.001f)
+        assertTrue("Score should have increased based on speed and delta time", vm.currentScore.value > 0)
+        assertEquals(2.0f, vm.gameState.value.elapsedTimeSeconds, 0.001f)
+
+        // Step 2: 50.0 seconds elapsed (test capping at maxGameSpeed)
+        vm.updateGameStep(50.0f) // would reach 11.0 + 25 = 36 without cap
+        assertEquals(30.0f, vm.gameSpeed.value, 0.001f) // capped at 30.0
+        assertEquals(30.0f, vm.gameState.value.gameSpeed, 0.001f)
+        assertTrue("Speed multiplier should reflect increment over base speed", vm.gameState.value.speedMultiplier >= 3.0f)
+    }
+
+    @Test
+    fun gameStateViewModel_coroutineGameLoop_continuouslyUpdatesStateAndAccountsForSpeedIncrements() = kotlinx.coroutines.runBlocking {
+        val vm = com.example.ui.GameStateViewModel().apply {
+            baseSpeed = 10.0f
+            speedIncrementRate = 5.0f // high rate for fast test verification
+            maxGameSpeed = 50.0f
+        }
+
+        vm.startGameLoop(tickDelayMs = 10L)
+        assertTrue(vm.isLoopRunning)
+
+        val initialSpeed = vm.gameSpeed.value
+        val initialScore = vm.currentScore.value
+
+        // Allow coroutine game loop to tick multiple frames
+        kotlinx.coroutines.delay(120L)
+
+        val updatedSpeed = vm.gameSpeed.value
+        val updatedScore = vm.currentScore.value
+
+        assertTrue("Game speed should have incremented via coroutine game loop", updatedSpeed > initialSpeed)
+        assertTrue("Score should have accumulated via coroutine game loop", updatedScore > initialScore)
+        assertTrue("Game state isPlaying must be true", vm.gameState.value.isPlaying)
+        assertFalse("Game state isGameOver must be false", vm.gameState.value.isGameOver)
+
+        // Stop game loop
+        vm.stopGameLoop()
+        assertFalse(vm.isLoopRunning)
+    }
+
+    @Test
+    fun gameStateViewModel_gameLoop_stopsWhenGameOver() = kotlinx.coroutines.runBlocking {
+        val vm = com.example.ui.GameStateViewModel()
+        vm.startGameLoop(tickDelayMs = 10L)
+        assertTrue(vm.isLoopRunning)
+
+        vm.setGameOver(true)
+        assertFalse("Game loop should stop when game over is triggered", vm.isLoopRunning)
+        assertTrue(vm.isGameOver.value)
+        assertTrue(vm.gameState.value.isGameOver)
+    }
 }
