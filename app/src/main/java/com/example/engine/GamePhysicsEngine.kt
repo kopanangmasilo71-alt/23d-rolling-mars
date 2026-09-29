@@ -99,6 +99,7 @@ class GamePhysicsEngine(
     var onNearMissEvent: (() -> Unit)? = null
     var onCollectibleCollected: ((CollectibleType) -> Unit)? = null
     var onShieldDeflected: (() -> Unit)? = null
+    var onPlayerHitObstacle: ((hitBall: RollingBall, isShieldBreak: Boolean) -> Unit)? = null
     var onDodgeFeedback: ((text: String, scoreGain: Int, combo: Int) -> Unit)? = null
     var onShootFired: (() -> Unit)? = null
     var onBoulderDestroyed: (() -> Unit)? = null
@@ -684,12 +685,14 @@ class GamePhysicsEngine(
                         particles.emitShockwave(Vector3(player.position.x, 0.1f, player.position.z), 32, floatArrayOf(0f, 0.95f, 1f, 1f))
                         particles.emitBurst(Vector3(player.position.x, player.position.y + 0.8f, player.position.z), 40, floatArrayOf(0f, 0.95f, 1f, 1f))
 
+                        onPlayerHitObstacle?.invoke(ball, true)
                         onShieldDeflected?.invoke()
                     } else if (player.invincibleGraceTimer > 0f) {
                         // Invulnerability grace period: boulder harmlessly shatters
                         ball.isActive = false
                         particles.emitShockwave(Vector3(player.position.x, 0.1f, player.position.z), 16, floatArrayOf(0f, 0.95f, 1f, 1f))
                     } else {
+                        onPlayerHitObstacle?.invoke(ball, false)
                         triggerGameOver(ball)
                         return
                     }
@@ -950,7 +953,7 @@ class GamePhysicsEngine(
         }
     }
 
-    private fun spawnBall(
+    fun spawnBall(
         type: BallType,
         x: Float,
         z: Float,

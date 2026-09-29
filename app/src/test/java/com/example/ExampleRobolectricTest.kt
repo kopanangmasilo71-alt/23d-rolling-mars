@@ -302,4 +302,53 @@ class ExampleRobolectricTest {
     viewModel.stopGameLoop()
     org.junit.Assert.assertFalse("Game loop should be stopped", viewModel.isGameLoopRunning)
   }
+
+  @Test
+  fun `touchController inputs update movement and combat states correctly`() {
+    val application = ApplicationProvider.getApplicationContext<android.app.Application>()
+    val viewModel = com.example.ui.GameViewModel(application)
+
+    // Left hold
+    viewModel.setLeftHeld(true)
+    org.junit.Assert.assertTrue(viewModel.renderer.isLeftHeld)
+    viewModel.setLeftHeld(false)
+    org.junit.Assert.assertFalse(viewModel.renderer.isLeftHeld)
+
+    // Right hold
+    viewModel.setRightHeld(true)
+    org.junit.Assert.assertTrue(viewModel.renderer.isRightHeld)
+    viewModel.setRightHeld(false)
+    org.junit.Assert.assertFalse(viewModel.renderer.isRightHeld)
+
+    // Jump
+    viewModel.startGame()
+    viewModel.jump()
+    org.junit.Assert.assertTrue(viewModel.renderer.physics.player.verticalVelocity > 0f)
+
+    // Shoot
+    val initialAmmo = viewModel.liveStats.value.ammo
+    viewModel.shoot()
+    org.junit.Assert.assertTrue(viewModel.liveStats.value.ammo <= initialAmmo)
+  }
+
+  @Test
+  fun `collision haptic feedback executes without errors when vibration is toggled`() {
+    val application = ApplicationProvider.getApplicationContext<android.app.Application>()
+    val viewModel = com.example.ui.GameViewModel(application)
+
+    // With vibration enabled
+    org.junit.Assert.assertTrue(viewModel.vibrationEnabled.value)
+    viewModel.triggerObstacleCollisionHaptic(isFatal = true)
+    viewModel.triggerObstacleCollisionHaptic(isFatal = false)
+
+    // Toggle vibration off
+    viewModel.toggleVibration()
+    org.junit.Assert.assertFalse(viewModel.vibrationEnabled.value)
+    viewModel.triggerObstacleCollisionHaptic(isFatal = true)
+    viewModel.triggerObstacleCollisionHaptic(isFatal = false)
+
+    // Toggle back on
+    viewModel.toggleVibration()
+    org.junit.Assert.assertTrue(viewModel.vibrationEnabled.value)
+  }
 }

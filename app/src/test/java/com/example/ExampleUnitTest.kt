@@ -643,4 +643,86 @@ class ExampleUnitTest {
         assertTrue(vm.isGameOver.value)
         assertTrue(vm.gameState.value.isGameOver)
     }
+
+    @Test
+    fun playerCharacter_runAnimationCadence_isBalancedAndReadable() {
+        val player = PlayerCharacter()
+        player.reset()
+
+        // Advance 1.0 second of running at normal speed
+        val initialAnimTime = player.runAnimationTime
+        player.update(dt = 1.0f, leftHeld = false, rightHeld = false, brakeHeld = false, roadHalfWidth = 6f)
+        val elapsedAnimTime = player.runAnimationTime - initialAnimTime
+
+        // Cadence should be ~7.0 rad/s (approx 1.11 Hz, ~2.2 steps/sec)
+        assertTrue("Run animation cadence must be between 5.5 and 9.0 rad/s", elapsedAnimTime in 5.5f..9.0f)
+
+        // Stride amplitude should be controlled and within natural athletic range (20 to 30 deg)
+        assertTrue("Thigh swing should be within natural bounds", Math.abs(player.thighSwingLeft) <= 32f)
+        assertTrue("Knee bend should be within natural bounds", player.kneeBendLeft in 0f..55f)
+        assertTrue("Arm swing should be within natural bounds", Math.abs(player.armSwingLeft) <= 25f)
+    }
+
+    @Test
+    fun physics_playerCollisionWithObstacle_triggersImmediateHitCallback() {
+        val audio = com.example.engine.GameAudio()
+        var gameOverCalled = false
+        val physics = GamePhysicsEngine(audio) { _, _, _, _, _ -> gameOverCalled = true }
+
+        var hitCallbackFired = false
+        var hitWasFatal = false
+        physics.isRunning = true
+        physics.onPlayerHitObstacle = { _, isShieldBreak ->
+            hitCallbackFired = true
+            hitWasFatal = !isShieldBreak
+        }
+
+        // Spawn boulder directly onto player position
+        physics.spawnBall(
+            type = com.example.engine.BallType.STRAIGHT,
+            x = physics.player.position.x,
+            z = physics.player.position.z,
+            speed = 10f,
+            lateralSpeed = 0f
+        )
+
+        physics.update(0.016f, false, false, false)
+
+        assertTrue("Immediate obstacle collision callback must fire on collision", hitCallbackFired)
+        assertTrue("Collision without shield must be fatal", hitWasFatal)
+        assertTrue("Game over state must be true", physics.isGameOver)
+    }
+
+    @Test
+    fun physics_playerCollisionWithShield_triggersDeflectHitCallback() {
+        val audio = com.example.engine.GameAudio()
+        val physics = GamePhysicsEngine(audio) { _, _, _, _, _ -> }
+
+        var hitCallbackFired = false
+        var hitWasShieldBreak = false
+        physics.isRunning = true
+        physics.onPlayerHitObstacle = { _, isShieldBreak ->
+            hitCallbackFired = true
+            hitWasShieldBreak = isShieldBreak
+        }
+
+        // Activate shield
+        physics.player.hasShield = true
+        physics.player.shieldTimer = 10f
+
+        // Spawn boulder directly onto player position
+        physics.spawnBall(
+            type = com.example.engine.BallType.STRAIGHT,
+            x = physics.player.position.x,
+            z = physics.player.position.z,
+            speed = 10f,
+            lateralSpeed = 0f
+        )
+
+        physics.update(0.016f, false, false, false)
+
+        assertTrue("Obstacle collision callback must fire when shield absorbs impact", hitCallbackFired)
+        assertTrue("Collision with shield must report isShieldBreak = true", hitWasShieldBreak)
+        assertFalse("Game should NOT be game over when shield absorbs hit", physics.isGameOver)
+    }
 }

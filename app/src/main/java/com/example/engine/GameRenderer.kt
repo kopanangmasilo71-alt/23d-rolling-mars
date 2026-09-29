@@ -781,8 +781,9 @@ class GameRenderer(val physics: GamePhysicsEngine) : GLSurfaceView.Renderer {
     }
 
     private fun renderSpeedPads() {
+        val camZ = physics.cameraPos.z
         for (pad in physics.speedPadPool) {
-            if (!pad.isActive) continue
+            if (!pad.isActive || pad.position.z > camZ + 8f || pad.position.z < camZ - 95f) continue
             matrixStack.push()
             matrixStack.translate(pad.position.x, pad.position.y, pad.position.z)
             val glow = 0.70f + sin(pad.glowPulse) * 0.30f
@@ -800,8 +801,9 @@ class GameRenderer(val physics: GamePhysicsEngine) : GLSurfaceView.Renderer {
     }
 
     private fun renderCollectibles() {
+        val camZ = physics.cameraPos.z
         for (col in physics.collectiblePool) {
-            if (!col.isActive) continue
+            if (!col.isActive || col.position.z > camZ + 8f || col.position.z < camZ - 95f) continue
             matrixStack.push()
             matrixStack.translate(col.position.x, col.position.y, col.position.z)
             matrixStack.rotate(col.rotationY, 0f, 1f, 0f)
@@ -909,7 +911,11 @@ class GameRenderer(val physics: GamePhysicsEngine) : GLSurfaceView.Renderer {
     }
 
     private fun renderScenery() {
+        val camZ = physics.cameraPos.z
         for (item in physics.scenery) {
+            // Frustum Culling Optimization: Skip objects far behind camera or beyond fog horizon
+            if (item.z > camZ + 12f || item.z < camZ - 105f) continue
+
             matrixStack.push()
             matrixStack.translate(item.x, 0f, item.z)
             matrixStack.rotate(item.rotationY, 0f, 1f, 0f)
@@ -1002,8 +1008,10 @@ class GameRenderer(val physics: GamePhysicsEngine) : GLSurfaceView.Renderer {
     }
 
     private fun renderBalls() {
+        val camZ = physics.cameraPos.z
+        val threatGlowBoost = (physics.dynamicSpeedMultiplier - 1.0f) * 0.30f
         for (ball in physics.ballPool) {
-            if (!ball.isActive) continue
+            if (!ball.isActive || ball.position.z > camZ + 12f || ball.position.z < camZ - 110f) continue
 
             matrixStack.push()
             matrixStack.translate(ball.position.x, ball.position.y, ball.position.z)
@@ -1018,18 +1026,19 @@ class GameRenderer(val physics: GamePhysicsEngine) : GLSurfaceView.Renderer {
                     // Volcanic Magma Boulder with dark basalt rock facets & molten orange/gold crevices
                     matrixStack.push()
                     matrixStack.scale(ball.radius, ball.radius, ball.radius)
-                    val magmaEmissive = if (ball.ballType == BallType.FAST) 0.85f else 0.65f
+                    val baseEmissive = if (ball.ballType == BallType.FAST) 0.85f else 0.65f
+                    val magmaEmissive = (baseEmissive + threatGlowBoost).coerceAtMost(1.0f)
                     drawMesh(magmaBoulderMesh, emissive = magmaEmissive)
                     matrixStack.pop()
                 }
                 BallType.LEFT_TO_RIGHT -> {
-                    drawMesh(crosserRightBallMesh, emissive = 0.25f)
+                    drawMesh(crosserRightBallMesh, emissive = (0.25f + threatGlowBoost).coerceAtMost(0.85f))
                 }
                 BallType.RIGHT_TO_LEFT -> {
-                    drawMesh(crosserLeftBallMesh, emissive = 0.25f)
+                    drawMesh(crosserLeftBallMesh, emissive = (0.25f + threatGlowBoost).coerceAtMost(0.85f))
                 }
                 BallType.BOUNCING -> {
-                    drawMesh(bouncerBallMesh, emissive = 0.35f)
+                    drawMesh(bouncerBallMesh, emissive = (0.35f + threatGlowBoost).coerceAtMost(0.90f))
                 }
             }
 

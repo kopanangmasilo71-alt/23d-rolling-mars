@@ -60,65 +60,142 @@ fun TouchController(
     onShoot: () -> Unit = {},
     onBrakeChange: (Boolean) -> Unit = {},
     ammo: Int = 10,
+    isLandscape: Boolean = false,
     modifier: Modifier = Modifier
 ) {
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .testTag("touch_controller"),
-        horizontalArrangement = Arrangement.Center,
-        verticalAlignment = Alignment.CenterVertically
+    val hasAmmo = ammo > 0
+
+    androidx.compose.runtime.CompositionLocalProvider(
+        androidx.compose.ui.platform.LocalLayoutDirection provides androidx.compose.ui.unit.LayoutDirection.Ltr
     ) {
-        // 1. LEFT Button
-        TouchPadButton(
-            icon = Icons.AutoMirrored.Filled.ArrowBack,
-            label = "LEFT",
-            testTag = "btn_steer_left",
-            size = 64.dp,
-            activeColor = Color(0xFF00E5FF),
-            onHoldChange = onLeftChange
-        )
+        if (isLandscape) {
+            // Landscape Mode:
+            // LEFT is at the bottom-left corner, JUMP is inner.
+            // SHOOT is inner (swapped away from corner), RIGHT is at the bottom-right corner.
+            Box(
+                modifier = modifier
+                    .fillMaxWidth()
+                    .testTag("touch_controller")
+            ) {
+                // BOTTOM LEFT CORNER: LEFT + JUMP
+                Row(
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(start = 24.dp, bottom = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    TouchPadButton(
+                        icon = Icons.AutoMirrored.Filled.ArrowBack,
+                        label = "LEFT",
+                        testTag = "btn_steer_left",
+                        size = 64.dp,
+                        activeColor = Color(0xFF00E5FF),
+                        onHoldChange = onLeftChange
+                    )
+                    TouchPadButton(
+                        icon = Icons.Default.ArrowUpward,
+                        label = "JUMP",
+                        testTag = "btn_jump",
+                        size = 64.dp,
+                        activeColor = Color(0xFF00E5FF),
+                        onHoldChange = {},
+                        onPressDown = onJump
+                    )
+                }
 
-        androidx.compose.foundation.layout.Spacer(modifier = Modifier.width(12.dp))
+                // BOTTOM RIGHT: SHOOT (inner) + RIGHT (bottom-right corner)
+                Row(
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(end = 24.dp, bottom = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    TouchPadButton(
+                        icon = Icons.Default.FlashOn,
+                        label = if (hasAmmo) "SHOOT" else "EMPTY",
+                        testTag = "btn_shoot",
+                        size = 64.dp,
+                        activeColor = if (hasAmmo) Color(0xFFFF3D00) else Color(0xFFFF5252),
+                        badge = "$ammo",
+                        badgeColor = if (hasAmmo) Color(0xFFFF6D00) else Color(0xFFD50000),
+                        onHoldChange = onShootChange,
+                        onPressDown = onShoot
+                    )
+                    TouchPadButton(
+                        icon = Icons.AutoMirrored.Filled.ArrowForward,
+                        label = "RIGHT",
+                        testTag = "btn_steer_right",
+                        size = 64.dp,
+                        activeColor = Color(0xFF00E5FF),
+                        onHoldChange = onRightChange
+                    )
+                }
+            }
+        } else {
+            // Portrait Mode:
+            // 1. LEFT at the bottom-left corner + JUMP (inner)
+            // 2. SHOOT (inner, not at corner) + RIGHT at the bottom-right corner
+            Row(
+                modifier = modifier
+                    .fillMaxWidth()
+                    .testTag("touch_controller")
+                    .padding(horizontal = 8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Left group: LEFT (at bottom-left corner) + JUMP
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    TouchPadButton(
+                        icon = Icons.AutoMirrored.Filled.ArrowBack,
+                        label = "LEFT",
+                        testTag = "btn_steer_left",
+                        size = 62.dp,
+                        activeColor = Color(0xFF00E5FF),
+                        onHoldChange = onLeftChange
+                    )
+                    TouchPadButton(
+                        icon = Icons.Default.ArrowUpward,
+                        label = "JUMP",
+                        testTag = "btn_jump",
+                        size = 62.dp,
+                        activeColor = Color(0xFF00E5FF),
+                        onHoldChange = {},
+                        onPressDown = onJump
+                    )
+                }
 
-        // 2. SHOOT Button with live Ammo counter & Empty indicator
-        val hasAmmo = ammo > 0
-        TouchPadButton(
-            icon = Icons.Default.FlashOn,
-            label = if (hasAmmo) "SHOOT" else "EMPTY",
-            testTag = "btn_shoot",
-            size = 64.dp,
-            activeColor = if (hasAmmo) Color(0xFFFF3D00) else Color(0xFFFF5252),
-            badge = "$ammo",
-            badgeColor = if (hasAmmo) Color(0xFFFF6D00) else Color(0xFFD50000),
-            onHoldChange = onShootChange,
-            onPressDown = onShoot
-        )
-
-        androidx.compose.foundation.layout.Spacer(modifier = Modifier.width(12.dp))
-
-        // 3. JUMP Button
-        TouchPadButton(
-            icon = Icons.Default.ArrowUpward,
-            label = "JUMP",
-            testTag = "btn_jump",
-            size = 64.dp,
-            activeColor = Color(0xFF00E5FF),
-            onHoldChange = {},
-            onPressDown = onJump
-        )
-
-        androidx.compose.foundation.layout.Spacer(modifier = Modifier.width(12.dp))
-
-        // 4. RIGHT Button
-        TouchPadButton(
-            icon = Icons.AutoMirrored.Filled.ArrowForward,
-            label = "RIGHT",
-            testTag = "btn_steer_right",
-            size = 64.dp,
-            activeColor = Color(0xFF00E5FF),
-            onHoldChange = onRightChange
-        )
+                // Right group: SHOOT (inner, not at corner) + RIGHT (at corner)
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    TouchPadButton(
+                        icon = Icons.Default.FlashOn,
+                        label = if (hasAmmo) "SHOOT" else "EMPTY",
+                        testTag = "btn_shoot",
+                        size = 62.dp,
+                        activeColor = if (hasAmmo) Color(0xFFFF3D00) else Color(0xFFFF5252),
+                        badge = "$ammo",
+                        badgeColor = if (hasAmmo) Color(0xFFFF6D00) else Color(0xFFD50000),
+                        onHoldChange = onShootChange,
+                        onPressDown = onShoot
+                    )
+                    TouchPadButton(
+                        icon = Icons.AutoMirrored.Filled.ArrowForward,
+                        label = "RIGHT",
+                        testTag = "btn_steer_right",
+                        size = 62.dp,
+                        activeColor = Color(0xFF00E5FF),
+                        onHoldChange = onRightChange
+                    )
+                }
+            }
+        }
     }
 }
 
@@ -140,6 +217,7 @@ fun TouchPadButton(
     badgeColor: Color = Color(0xFFFF6D00)
 ) {
     var isPressed by remember { mutableStateOf(false) }
+    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
 
     val scale by animateFloatAsState(
         targetValue = if (isPressed) 0.88f else 1.0f,
@@ -169,6 +247,7 @@ fun TouchPadButton(
                 awaitEachGesture {
                     awaitFirstDown(requireUnconsumed = false)
                     isPressed = true
+                    haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
                     onHoldChange(true)
                     onPressDown?.invoke()
 

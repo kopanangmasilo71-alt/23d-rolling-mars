@@ -17,8 +17,11 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.Home
@@ -73,10 +76,13 @@ fun GameOverOverlay(
             elevation = CardDefaults.cardElevation(defaultElevation = 16.dp),
             modifier = Modifier
                 .fillMaxWidth(0.90f)
+                .widthIn(max = 500.dp)
                 .padding(16.dp)
         ) {
             Column(
-                modifier = Modifier.padding(24.dp),
+                modifier = Modifier
+                    .padding(20.dp)
+                    .verticalScroll(rememberScrollState()),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 // New High Score celebration badge
@@ -333,11 +339,14 @@ fun PauseOverlay(
             border = androidx.compose.foundation.BorderStroke(1.5.dp, Color(0xFF00E5FF)),
             elevation = CardDefaults.cardElevation(defaultElevation = 20.dp),
             modifier = Modifier
-                .fillMaxWidth(0.82f)
+                .fillMaxWidth(0.85f)
+                .widthIn(max = 440.dp)
                 .padding(16.dp)
         ) {
             Column(
-                modifier = Modifier.padding(horizontal = 24.dp, vertical = 28.dp),
+                modifier = Modifier
+                    .padding(horizontal = 24.dp, vertical = 20.dp)
+                    .verticalScroll(rememberScrollState()),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text(

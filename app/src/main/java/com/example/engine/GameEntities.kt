@@ -275,7 +275,8 @@ class RollingBall(val id: Int) {
         }
 
         if (bounceAmp > 0f) {
-            bouncePhase += dt * 6.5f
+            val bounceFreq = 6.5f * (forwardVelocity / 10f).coerceIn(0.8f, 1.8f)
+            bouncePhase += dt * bounceFreq
             position.y = radius + abs(sin(bouncePhase)) * bounceAmp
         }
     }
@@ -775,10 +776,11 @@ class PlayerCharacter {
         }
 
         // Realistic Step & Biomechanical Animation Synchronized with Exact Road Movement
-        // Natural athletic running cadence: smooth ~2.3 Hz cycle without frantic flailing
-        val baseCadence = 14.2f
-        val speedRatio = (effectiveForwardSpeed / baseNormalSpeed).coerceIn(0.5f, 2.2f)
-        val angularStrideRate = baseCadence * (0.75f + 0.25f * speedRatio)
+        // Natural athletic running cadence (~1.1 Hz cycle, ~133 steps/minute)
+        // Eliminates frantic cartoon leg-spinning while maintaining crisp, heroic motion
+        val baseCadence = 7.0f
+        val speedRatio = (effectiveForwardSpeed / baseNormalSpeed).coerceIn(0.5f, 2.0f)
+        val angularStrideRate = baseCadence * (0.88f + 0.12f * speedRatio)
         runAnimationTime += dt * angularStrideRate
 
         // Detect footstep plants for synchronized dust puffs and tactile feel
@@ -795,31 +797,31 @@ class PlayerCharacter {
         val strideSin = sin(runAnimationTime)
 
         if (isGrounded) {
-            // Smooth, controlled stride amplitude - eliminates aggressive limb flailing
-            val strideAmplitude = 22f + (speedRatio - 1f).coerceIn(-0.3f, 1.0f) * 4.5f
+            // Fluid, athletic running stride: leg swing amplitude opens gracefully with speed
+            val strideAmplitude = 24f + (speedRatio - 1f).coerceIn(-0.2f, 0.8f) * 5.0f
             limbSwingAngle = strideSin * strideAmplitude
             thighSwingLeft = strideSin * strideAmplitude
             thighSwingRight = -thighSwingLeft
 
-            // Natural, graceful Knee Flexion
-            kneeBendLeft = if (thighSwingLeft > 0f) (thighSwingLeft * 1.15f).coerceIn(4f, 46f) else 4f
-            kneeBendRight = if (thighSwingRight > 0f) (thighSwingRight * 1.15f).coerceIn(4f, 46f) else 4f
+            // Natural, graceful Knee Flexion: knee bends on recovery swing
+            kneeBendLeft = if (thighSwingLeft > 0f) (thighSwingLeft * 1.25f).coerceIn(4f, 50f) else 4f
+            kneeBendRight = if (thighSwingRight > 0f) (thighSwingRight * 1.25f).coerceIn(4f, 50f) else 4f
 
             // Smooth arm swing counter-balances legs comfortably
-            armSwingLeft = -thighSwingLeft * 0.65f
+            armSwingLeft = -thighSwingLeft * 0.70f
             armSwingRight = -armSwingLeft
 
-            // Controlled forearms posture
-            elbowBendLeft = 74f + strideSin * 5f
-            elbowBendRight = 74f - strideSin * 5f
+            // Controlled forearms posture with relaxed athletic bend
+            elbowBendLeft = 70f + strideSin * 6f
+            elbowBendRight = 70f - strideSin * 6f
 
             // Subtle athletic torso twist instead of wild swaying
             torsoTwist = -strideSin * 2.8f
 
-            // Gentle, grounded vertical body bounce (subtle micro-bobbing instead of violent jitter)
-            val bobAmplitude = 0.016f + (speedRatio - 1f).coerceIn(0f, 1.0f) * 0.008f
+            // Gentle, grounded vertical body bounce (subtle micro-bobbing synchronized with steps)
+            val bobAmplitude = 0.016f + (speedRatio - 1f).coerceIn(0f, 0.8f) * 0.006f
             val verticalStrideBounce = -cos(runAnimationTime * 2f) * bobAmplitude
-            bodyBobOffset = verticalStrideBounce - landingSquash * 0.22f
+            bodyBobOffset = verticalStrideBounce - landingSquash * 0.20f
         } else {
             // Mid-air Jump Pose (Athletic hurdle tuck & reach)
             thighSwingLeft = 28f

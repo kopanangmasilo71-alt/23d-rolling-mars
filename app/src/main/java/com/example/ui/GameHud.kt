@@ -85,6 +85,10 @@ fun GameHud(
     val shieldDeflected by viewModel.shieldDeflectedAlert.collectAsStateWithLifecycle()
     val collectiblePickup by viewModel.collectiblePickupAlert.collectAsStateWithLifecycle()
 
+    val configuration = androidx.compose.ui.platform.LocalConfiguration.current
+    val isLandscape = configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+    val alertTopPadding = if (isLandscape) 46.dp else 68.dp
+
     val shakeTrigger by viewModel.screenShakeTrigger.collectAsStateWithLifecycle()
     val shakeIntensity by viewModel.screenShakeIntensity.collectAsStateWithLifecycle()
     val shakeAnimX = androidx.compose.runtime.remember { androidx.compose.animation.core.Animatable(0f) }
@@ -130,16 +134,17 @@ fun GameHud(
                 translationY = shakeAnimY.value
             }
     ) {
-        // TOP HUD BAR
+        // TOP HUD BAR - Compact, space-optimized floating cyber HUD
         TopHudBar(
             stats = stats,
             currentScore = currentScore,
             gameSpeed = gameSpeed,
             onPauseClick = { viewModel.pauseGame() },
+            isLandscape = isLandscape,
             modifier = Modifier
                 .align(Alignment.TopCenter)
                 .fillMaxWidth()
-                .padding(horizontal = 14.dp, vertical = 6.dp)
+                .padding(horizontal = if (isLandscape) 18.dp else 12.dp, vertical = 4.dp)
         )
 
         // SECTOR TRANSITION ANNOUNCEMENT
@@ -149,7 +154,7 @@ fun GameHud(
             exit = slideOutVertically(targetOffsetY = { -it }) + fadeOut(),
             modifier = Modifier
                 .align(Alignment.TopCenter)
-                .padding(top = 110.dp)
+                .padding(top = alertTopPadding)
         ) {
             sectorAlert?.let { sector ->
                 Surface(
@@ -161,19 +166,19 @@ fun GameHud(
                 ) {
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp)
+                        modifier = Modifier.padding(horizontal = 24.dp, vertical = 10.dp)
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(
                                 imageVector = Icons.Default.Bolt,
                                 contentDescription = null,
                                 tint = Color(0xFF00E5FF),
-                                modifier = Modifier.size(20.dp)
+                                modifier = Modifier.size(18.dp)
                             )
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
                                 text = "ENTERING ${sector.name}",
-                                fontSize = 12.sp,
+                                fontSize = 11.sp,
                                 fontWeight = FontWeight.Black,
                                 color = Color(0xFF00E5FF),
                                 letterSpacing = 2.sp
@@ -181,7 +186,7 @@ fun GameHud(
                         }
                         Text(
                             text = sector.subtitle,
-                            fontSize = 18.sp,
+                            fontSize = 16.sp,
                             fontWeight = FontWeight.ExtraBold,
                             color = Color.White
                         )
@@ -197,7 +202,7 @@ fun GameHud(
             exit = scaleOut(tween(250)) + fadeOut(),
             modifier = Modifier
                 .align(Alignment.TopCenter)
-                .padding(top = 110.dp)
+                .padding(top = alertTopPadding)
         ) {
             threatAlert?.let { threat ->
                 val badgeColor = Color(threat.badgeColorHex)
@@ -210,19 +215,19 @@ fun GameHud(
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(horizontal = 18.dp, vertical = 10.dp)
+                        modifier = Modifier.padding(horizontal = 18.dp, vertical = 8.dp)
                     ) {
                         Icon(
                             imageVector = Icons.Default.Warning,
                             contentDescription = "Threat Escalation",
                             tint = badgeColor,
-                            modifier = Modifier.size(28.dp)
+                            modifier = Modifier.size(24.dp)
                         )
                         Spacer(modifier = Modifier.width(10.dp))
                         Column {
                             Text(
                                 text = "THREAT ESCALATION • LVL ${threat.level}: ${threat.name}",
-                                fontSize = 14.sp,
+                                fontSize = 13.sp,
                                 fontWeight = FontWeight.Black,
                                 color = badgeColor,
                                 letterSpacing = 1.sp
@@ -246,7 +251,7 @@ fun GameHud(
             exit = slideOutVertically(targetOffsetY = { -it }) + fadeOut(),
             modifier = Modifier
                 .align(Alignment.TopCenter)
-                .padding(top = 112.dp)
+                .padding(top = alertTopPadding)
         ) {
             timeOfDayAlert?.let { alertText ->
                 Surface(
@@ -258,11 +263,11 @@ fun GameHud(
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(horizontal = 18.dp, vertical = 10.dp)
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
                     ) {
                         Text(
                             text = alertText,
-                            fontSize = 15.sp,
+                            fontSize = 14.sp,
                             fontWeight = FontWeight.Black,
                             color = Color(0xFFFFE082),
                             letterSpacing = 1.sp
@@ -279,7 +284,7 @@ fun GameHud(
             exit = slideOutVertically(targetOffsetY = { -it }) + fadeOut(),
             modifier = Modifier
                 .align(Alignment.TopCenter)
-                .padding(top = 96.dp)
+                .padding(top = alertTopPadding)
         ) {
             collectiblePickup?.let { col ->
                 val colColor = when (col) {
@@ -299,7 +304,7 @@ fun GameHud(
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
                     ) {
                         Icon(
                             imageVector = when (col) {
@@ -312,20 +317,20 @@ fun GameHud(
                             },
                             contentDescription = null,
                             tint = colColor,
-                            modifier = Modifier.size(24.dp)
+                            modifier = Modifier.size(20.dp)
                         )
-                        Spacer(modifier = Modifier.width(10.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
                         Column {
                             Text(
                                 text = "${col.displayName} ONLINE!",
-                                fontSize = 13.sp,
+                                fontSize = 12.sp,
                                 fontWeight = FontWeight.Black,
                                 color = colColor,
                                 letterSpacing = 1.sp
                             )
                             Text(
                                 text = col.description,
-                                fontSize = 10.sp,
+                                fontSize = 9.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = Color.White
                             )
@@ -342,7 +347,7 @@ fun GameHud(
             exit = scaleOut(tween(250)) + fadeOut(),
             modifier = Modifier
                 .align(Alignment.TopCenter)
-                .padding(top = 96.dp)
+                .padding(top = alertTopPadding)
         ) {
             Surface(
                 shape = RoundedCornerShape(24.dp),
@@ -353,26 +358,26 @@ fun GameHud(
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(horizontal = 18.dp, vertical = 12.dp)
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
                 ) {
                     Icon(
                         imageVector = Icons.Default.Security,
                         contentDescription = "Shield Deflected",
                         tint = Color(0xFF00E5FF),
-                        modifier = Modifier.size(34.dp)
+                        modifier = Modifier.size(28.dp)
                     )
-                    Spacer(modifier = Modifier.width(12.dp))
+                    Spacer(modifier = Modifier.width(10.dp))
                     Column {
                         Text(
                             text = "SHIELD DEFLECTED!",
-                            fontSize = 17.sp,
+                            fontSize = 15.sp,
                             fontWeight = FontWeight.Black,
                             color = Color(0xFF00E5FF),
                             letterSpacing = 1.sp
                         )
                         Text(
                             text = "BOULDER BLASTED • RUN SAVED! (+350)",
-                            fontSize = 11.sp,
+                            fontSize = 10.sp,
                             fontWeight = FontWeight.ExtraBold,
                             color = Color.White
                         )
@@ -388,7 +393,7 @@ fun GameHud(
                 progress = stats.comboProgress,
                 modifier = Modifier
                     .align(Alignment.CenterStart)
-                    .padding(start = 14.dp)
+                    .padding(start = if (isLandscape) 20.dp else 14.dp)
             )
         }
 
@@ -399,28 +404,28 @@ fun GameHud(
             exit = scaleOut(tween(250)) + fadeOut(),
             modifier = Modifier
                 .align(Alignment.TopCenter)
-                .padding(top = 96.dp)
+                .padding(top = alertTopPadding)
         ) {
             Surface(
                 shape = RoundedCornerShape(20.dp),
                 color = Color(0xEE0A192F),
                 border = androidx.compose.foundation.BorderStroke(2.dp, Color(0xFFFFD700)),
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp)
                 ) {
                     Icon(
                         imageVector = Icons.Default.Bolt,
                         contentDescription = null,
                         tint = Color(0xFFFFD700),
-                        modifier = Modifier.size(22.dp)
+                        modifier = Modifier.size(20.dp)
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
                         text = "NEAR MISS! +100",
-                        fontSize = 16.sp,
+                        fontSize = 15.sp,
                         fontWeight = FontWeight.Black,
                         color = Color(0xFFFFD700),
                         letterSpacing = 1.sp
@@ -430,11 +435,11 @@ fun GameHud(
         }
 
         // BOTTOM MOBILE TOUCH CONTROLS
-        Column(
+        Box(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .padding(horizontal = 14.dp, vertical = 12.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
+                .fillMaxWidth()
+                .padding(bottom = if (isLandscape) 4.dp else 10.dp)
         ) {
             // Out of Ammo / Low Ammo Warning Alert
             if (stats.ammo == 0) {
@@ -442,7 +447,9 @@ fun GameHud(
                     shape = RoundedCornerShape(12.dp),
                     color = Color(0xD9B71C1C),
                     border = androidx.compose.foundation.BorderStroke(1.2.dp, Color(0xFFFF5252)),
-                    modifier = Modifier.padding(bottom = 8.dp)
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(bottom = if (isLandscape) 82.dp else 88.dp)
                 ) {
                     Text(
                         text = "⚡ OUT OF AMMO! COLLECT POWER-UPS TO RECHARGE",
@@ -458,7 +465,9 @@ fun GameHud(
                     shape = RoundedCornerShape(12.dp),
                     color = Color(0xD9E65100),
                     border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFFB74D)),
-                    modifier = Modifier.padding(bottom = 8.dp)
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(bottom = if (isLandscape) 82.dp else 88.dp)
                 ) {
                     Text(
                         text = "⚡ LOW AMMO: ${stats.ammo} BOLTS LEFT",
@@ -477,7 +486,9 @@ fun GameHud(
                 onJump = { viewModel.jump() },
                 onShootChange = { held -> viewModel.setShootHeld(held) },
                 onShoot = { viewModel.shoot() },
-                ammo = stats.ammo
+                ammo = stats.ammo,
+                isLandscape = isLandscape,
+                modifier = Modifier.fillMaxWidth()
             )
         }
     }
@@ -489,597 +500,452 @@ private fun TopHudBar(
     onPauseClick: () -> Unit,
     modifier: Modifier = Modifier,
     currentScore: Int = stats.score,
-    gameSpeed: Float = stats.forwardSpeed
+    gameSpeed: Float = stats.forwardSpeed,
+    isLandscape: Boolean = false
 ) {
     Surface(
         modifier = modifier,
-        shape = RoundedCornerShape(20.dp),
-        color = Color(0xD90A0F1E),
-        tonalElevation = 8.dp,
+        shape = RoundedCornerShape(14.dp),
+        color = Color(0xE60A0F1E),
+        tonalElevation = 6.dp,
         border = androidx.compose.foundation.BorderStroke(1.dp, Color(0x3300E5FF))
     ) {
         Column(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
+            modifier = Modifier.fillMaxWidth()
         ) {
-            // Upper Info Row: Sector & Overdrive & Pause
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    // Sector Tag
-                    Surface(
-                        shape = RoundedCornerShape(8.dp),
-                        color = Color(0x3300E5FF),
-                        border = androidx.compose.foundation.BorderStroke(0.5.dp, Color(0xFF00E5FF)),
-                        modifier = Modifier.padding(end = 6.dp)
+            if (isLandscape) {
+                // LANDSCAPE: Ultra-compact, single-line cyber bar (~40dp) maximizing game visibility!
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 14.dp, vertical = 5.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // LEFT: Sector & Threat Level & Time & Active Power
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = Color(0x3300E5FF),
+                            border = androidx.compose.foundation.BorderStroke(0.5.dp, Color(0xFF00E5FF))
+                        ) {
+                            Text(
+                                text = stats.sectorName,
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Black,
+                                color = Color(0xFF00E5FF),
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+
+                        val threatColor = Color(stats.threatLevelColorHex)
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = threatColor.copy(alpha = 0.22f),
+                            border = androidx.compose.foundation.BorderStroke(0.6.dp, threatColor)
+                        ) {
+                            Text(
+                                text = "LVL ${stats.threatLevel} • ${String.format(java.util.Locale.US, "%.1fx", stats.dynamicSpeedMultiplier)}",
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Black,
+                                color = threatColor,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = Color(0x22FFFFFF),
+                            border = androidx.compose.foundation.BorderStroke(0.5.dp, Color(0x44FFFFFF))
+                        ) {
+                            Text(
+                                text = "${stats.timeOfDayEmoji} ${stats.timeOfDayName}",
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+
+                        ActivePowerPill(stats = stats)
+                    }
+
+                    // CENTER: Prominent Score, Distance & Dodged Balls
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.Bottom) {
+                            Text(
+                                text = "SCORE ",
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFFFFD54F),
+                                letterSpacing = 1.sp
+                            )
+                            Text(
+                                text = "$currentScore",
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Black,
+                                color = if (stats.hasBeatenHighScore) Color(0xFFFFD54F) else Color.White
+                            )
+                        }
+
                         Text(
-                            text = stats.sectorName,
+                            text = "•",
                             fontSize = 10.sp,
-                            fontWeight = FontWeight.Black,
-                            color = Color(0xFF00E5FF),
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                            color = Color(0x66FFFFFF)
+                        )
+
+                        Row(verticalAlignment = Alignment.Bottom) {
+                            Text(
+                                text = "DIST ",
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF90CAF9)
+                            )
+                            Text(
+                                text = "${stats.distanceMeters}m",
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Black,
+                                color = Color.White
+                            )
+                        }
+
+                        Text(
+                            text = "•",
+                            fontSize = 10.sp,
+                            color = Color(0x66FFFFFF)
+                        )
+
+                        Text(
+                            text = "🎯 ${stats.ballsDodged}",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF81C784)
                         )
                     }
 
-                    // Time of Day Tag
-                    val todColor = when (stats.timeOfDayName) {
-                        "DAWN" -> Color(0xFFFF8A65)
-                        "MIDDAY" -> Color(0xFFFFD54F)
-                        "SUNSET" -> Color(0xFFFF7043)
-                        "TWILIGHT" -> Color(0xFFCE93D8)
-                        "NIGHT" -> Color(0xFF81D4FA)
-                        else -> Color(0xFF00E5FF)
+                    // RIGHT: Speed, Ammo, Pause Button
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = "${String.format(java.util.Locale.US, "%.1f", gameSpeed)} m/s",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFFB0BEC5)
+                        )
+
+                        val ammoBadgeColor = if (stats.ammo > 5) Color(0xFFFF6D00) else if (stats.ammo > 0) Color(0xFFFFAB00) else Color(0xFFFF5252)
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = ammoBadgeColor.copy(alpha = 0.22f),
+                            border = androidx.compose.foundation.BorderStroke(0.6.dp, ammoBadgeColor)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.FlashOn,
+                                    contentDescription = "Ammo",
+                                    tint = ammoBadgeColor,
+                                    modifier = Modifier.size(11.dp)
+                                )
+                                Spacer(modifier = Modifier.width(2.dp))
+                                Text(
+                                    text = "${stats.ammo}",
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Black,
+                                    color = ammoBadgeColor
+                                )
+                            }
+                        }
+
+                        IconButton(
+                            onClick = onPauseClick,
+                            modifier = Modifier
+                                .size(32.dp)
+                                .testTag("pause_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Pause,
+                                contentDescription = "Pause",
+                                tint = Color.White,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
                     }
-                    Surface(
-                        shape = RoundedCornerShape(8.dp),
-                        color = todColor.copy(alpha = 0.20f),
-                        border = androidx.compose.foundation.BorderStroke(0.6.dp, todColor.copy(alpha = 0.85f)),
-                        modifier = Modifier.padding(end = 6.dp)
+                }
+            } else {
+                // PORTRAIT: Sleek 2-tier compact cyber bar (~50dp)
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 6.dp)
+                ) {
+                    // Row 1: Sector / Time on Left, Score in Center, Ammo & Pause on Right
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = Color(0x3300E5FF),
+                                border = androidx.compose.foundation.BorderStroke(0.5.dp, Color(0xFF00E5FF))
+                            ) {
+                                Text(
+                                    text = stats.sectorName,
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.Black,
+                                    color = Color(0xFF00E5FF),
+                                    modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+                                )
+                            }
+
                             Text(
                                 text = stats.timeOfDayEmoji,
                                 fontSize = 10.sp
                             )
-                            Spacer(modifier = Modifier.width(3.dp))
-                            Text(
-                                text = "${stats.timeOfDayName} • ${stats.timeOfDayTime}",
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Black,
-                                color = todColor
-                            )
                         }
-                    }
 
-                    if (stats.isOverdrive) {
-                        Surface(
-                            shape = RoundedCornerShape(8.dp),
-                            color = Color(0x44FF3D00),
-                            border = androidx.compose.foundation.BorderStroke(0.5.dp, Color(0xFFFF3D00)),
-                            modifier = Modifier.padding(end = 6.dp)
-                        ) {
+                        // Central Score
+                        Row(verticalAlignment = Alignment.Bottom) {
                             Text(
-                                text = "OVERDRIVE 2X",
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Black,
-                                color = Color(0xFFFF5722),
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                            )
-                        }
-                    }
-
-                    // Dynamic Threat Level / Speed Multiplier Badge
-                    val threatColor = Color(stats.threatLevelColorHex)
-                    Surface(
-                        shape = RoundedCornerShape(8.dp),
-                        color = threatColor.copy(alpha = 0.22f),
-                        border = androidx.compose.foundation.BorderStroke(0.8.dp, threatColor),
-                        modifier = Modifier.padding(end = 6.dp)
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Warning,
-                                contentDescription = "Threat Level",
-                                tint = threatColor,
-                                modifier = Modifier.size(11.dp)
-                            )
-                            Spacer(modifier = Modifier.width(3.dp))
-                            Text(
-                                text = "LVL ${stats.threatLevel} • ${String.format(java.util.Locale.US, "%.1fx", stats.dynamicSpeedMultiplier)}",
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Black,
-                                color = threatColor
-                            )
-                        }
-                    }
-                }
-
-                // Speed / Turbo Status & Run Duration
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    // Run Duration Timer Pill
-                    val mins = stats.runDurationSeconds / 60
-                    val secs = stats.runDurationSeconds % 60
-                    Surface(
-                        shape = RoundedCornerShape(8.dp),
-                        color = Color(0x22FFFFFF),
-                        border = androidx.compose.foundation.BorderStroke(0.6.dp, Color(0x44FFFFFF)),
-                        modifier = Modifier.padding(end = 6.dp)
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.5.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Timer,
-                                contentDescription = "Duration",
-                                tint = Color(0xFFCFD8DC),
-                                modifier = Modifier.size(11.dp)
-                            )
-                            Spacer(modifier = Modifier.width(3.dp))
-                            Text(
-                                text = String.format(java.util.Locale.US, "%02d:%02d", mins, secs),
-                                fontSize = 10.sp,
+                                text = "SCORE ",
+                                fontSize = 9.sp,
                                 fontWeight = FontWeight.Bold,
+                                color = Color(0xFFFFD54F),
+                                letterSpacing = 1.sp
+                            )
+                            Text(
+                                text = "$currentScore",
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Black,
+                                color = if (stats.hasBeatenHighScore) Color(0xFFFFD54F) else Color.White
+                            )
+                        }
+
+                        // Right: Ammo & Pause
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            val ammoBadgeColor = if (stats.ammo > 5) Color(0xFFFF6D00) else if (stats.ammo > 0) Color(0xFFFFAB00) else Color(0xFFFF5252)
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = ammoBadgeColor.copy(alpha = 0.22f),
+                                border = androidx.compose.foundation.BorderStroke(0.6.dp, ammoBadgeColor)
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.FlashOn,
+                                        contentDescription = "Ammo",
+                                        tint = ammoBadgeColor,
+                                        modifier = Modifier.size(11.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(2.dp))
+                                    Text(
+                                        text = "${stats.ammo}",
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Black,
+                                        color = ammoBadgeColor
+                                    )
+                                }
+                            }
+
+                            IconButton(
+                                onClick = onPauseClick,
+                                modifier = Modifier
+                                    .size(30.dp)
+                                    .testTag("pause_button")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Pause,
+                                    contentDescription = "Pause",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(3.dp))
+
+                    // Row 2: Secondary stats (Distance, Active Power, Speed)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = "${stats.distanceMeters}m",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Black,
                                 color = Color.White
                             )
-                        }
-                    }
-                    if (stats.isBoosting) {
-                        Surface(
-                            shape = RoundedCornerShape(8.dp),
-                            color = Color(0x4400E676),
-                            border = androidx.compose.foundation.BorderStroke(0.5.dp, Color(0xFF00E676)),
-                            modifier = Modifier.padding(end = 8.dp)
-                        ) {
+                            Spacer(modifier = Modifier.width(4.dp))
                             Text(
-                                text = "TURBO",
+                                text = "• LVL ${stats.threatLevel}",
                                 fontSize = 10.sp,
-                                fontWeight = FontWeight.Black,
-                                color = Color(0xFF00E676),
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                fontWeight = FontWeight.Bold,
+                                color = Color(stats.threatLevelColorHex)
                             )
-                        }
-                    }
-
-                    Text(
-                        text = "${String.format("%.1f", gameSpeed)} m/s",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFFB0BEC5),
-                        modifier = Modifier.padding(end = 8.dp)
-                    )
-
-                    // Ammo Gauge Badge
-                    val ammoBadgeColor = if (stats.ammo > 5) Color(0xFFFF6D00) else if (stats.ammo > 0) Color(0xFFFFAB00) else Color(0xFFFF5252)
-                    Surface(
-                        shape = RoundedCornerShape(8.dp),
-                        color = ammoBadgeColor.copy(alpha = 0.22f),
-                        border = androidx.compose.foundation.BorderStroke(0.8.dp, ammoBadgeColor),
-                        modifier = Modifier.padding(end = 8.dp)
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.FlashOn,
-                                contentDescription = "Ammo",
-                                tint = ammoBadgeColor,
-                                modifier = Modifier.size(12.dp)
-                            )
-                            Spacer(modifier = Modifier.width(3.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
                             Text(
-                                text = "AMMO ${stats.ammo}",
+                                text = "• 🎯 ${stats.ballsDodged}",
                                 fontSize = 10.sp,
-                                fontWeight = FontWeight.Black,
-                                color = ammoBadgeColor,
-                                letterSpacing = 0.5.sp
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF81C784)
                             )
                         }
-                    }
 
-                    IconButton(
-                        onClick = onPauseClick,
-                        modifier = Modifier
-                            .size(32.dp)
-                            .testTag("pause_button")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Pause,
-                            contentDescription = "Pause",
-                            tint = Color.White,
-                            modifier = Modifier.size(20.dp)
+                        // Compact Powerup chip if active
+                        ActivePowerPill(stats = stats)
+
+                        Text(
+                            text = "${String.format(java.util.Locale.US, "%.1f", gameSpeed)} m/s",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFFB0BEC5)
                         )
                     }
                 }
             }
 
-            // Active Power-ups Status Row (Presented prominently at top just like distance travelled)
-            if (stats.hasShield || stats.isScoreBoosted || stats.isBoosting || stats.orbsCollected > 0) {
-                Spacer(modifier = Modifier.height(4.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    if (stats.orbsCollected > 0 && !stats.isBoosting) {
-                        Surface(
-                            shape = RoundedCornerShape(10.dp),
-                            color = Color(0x33FFD700),
-                            border = androidx.compose.foundation.BorderStroke(1.2.dp, Color(0xFFFFD700)),
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Column(
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
-                            ) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(
-                                            imageVector = Icons.Default.Bolt,
-                                            contentDescription = "Energy Orbs",
-                                            tint = Color(0xFFFFD700),
-                                            modifier = Modifier.size(14.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Text(
-                                            text = "ORBS ${stats.orbsCollected}/${stats.maxOrbsForBoost}",
-                                            fontSize = 10.sp,
-                                            fontWeight = FontWeight.Black,
-                                            color = Color(0xFFFFD700),
-                                            letterSpacing = 0.5.sp
-                                        )
-                                    }
-                                }
-                                Spacer(modifier = Modifier.height(3.dp))
-                                LinearProgressIndicator(
-                                    progress = { (stats.orbsCollected.toFloat() / stats.maxOrbsForBoost.toFloat()).coerceIn(0f, 1f) },
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(4.dp)
-                                        .clip(RoundedCornerShape(2.dp)),
-                                    color = Color(0xFFFFD700),
-                                    trackColor = Color(0x33FFD700)
-                                )
-                            }
-                        }
-                    }
-                    if (stats.hasShield) {
-                        Surface(
-                            shape = RoundedCornerShape(10.dp),
-                            color = Color(0x3300E5FF),
-                            border = androidx.compose.foundation.BorderStroke(1.2.dp, Color(0xFF00E5FF)),
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Column(
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
-                            ) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(
-                                            imageVector = Icons.Default.Security,
-                                            contentDescription = "Shield Active",
-                                            tint = Color(0xFF00E5FF),
-                                            modifier = Modifier.size(14.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Text(
-                                            text = "SHIELD",
-                                            fontSize = 10.sp,
-                                            fontWeight = FontWeight.Black,
-                                            color = Color(0xFF00E5FF),
-                                            letterSpacing = 0.5.sp
-                                        )
-                                    }
-                                    Text(
-                                        text = "${stats.shieldRemainingSec}s",
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Black,
-                                        color = Color.White
-                                    )
-                                }
-                                Spacer(modifier = Modifier.height(3.dp))
-                                LinearProgressIndicator(
-                                    progress = { stats.shieldProgress },
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(4.dp)
-                                        .clip(RoundedCornerShape(2.dp)),
-                                    color = Color(0xFF00E5FF),
-                                    trackColor = Color(0x3300E5FF)
-                                )
-                            }
-                        }
-                    }
-
-                    if (stats.isScoreBoosted) {
-                        Surface(
-                            shape = RoundedCornerShape(10.dp),
-                            color = Color(0x33FFD54F),
-                            border = androidx.compose.foundation.BorderStroke(1.2.dp, Color(0xFFFFD54F)),
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Column(
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
-                            ) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(
-                                            imageVector = Icons.Default.Stars,
-                                            contentDescription = "Score Multiplier Active",
-                                            tint = Color(0xFFFFD54F),
-                                            modifier = Modifier.size(14.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Text(
-                                            text = "${stats.scoreMultiplierValue}X SCORE",
-                                            fontSize = 10.sp,
-                                            fontWeight = FontWeight.Black,
-                                            color = Color(0xFFFFD54F),
-                                            letterSpacing = 0.5.sp
-                                        )
-                                    }
-                                    Text(
-                                        text = "${stats.scoreMultiplierRemainingSec}s",
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Black,
-                                        color = Color.White
-                                    )
-                                }
-                                Spacer(modifier = Modifier.height(3.dp))
-                                LinearProgressIndicator(
-                                    progress = { stats.scoreMultiplierProgress },
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(4.dp)
-                                        .clip(RoundedCornerShape(2.dp)),
-                                    color = Color(0xFFFFD54F),
-                                    trackColor = Color(0x33FFD54F)
-                                )
-                            }
-                        }
-                    }
-
-                    if (stats.isBoosting) {
-                        Surface(
-                            shape = RoundedCornerShape(10.dp),
-                            color = Color(0x3300E676),
-                            border = androidx.compose.foundation.BorderStroke(1.2.dp, Color(0xFF00E676)),
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Column(
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
-                            ) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(
-                                            imageVector = Icons.Default.Speed,
-                                            contentDescription = "Hyper Boost Active",
-                                            tint = Color(0xFF00E676),
-                                            modifier = Modifier.size(14.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Text(
-                                            text = "BOOST",
-                                            fontSize = 10.sp,
-                                            fontWeight = FontWeight.Black,
-                                            color = Color(0xFF00E676),
-                                            letterSpacing = 0.5.sp
-                                        )
-                                    }
-                                    Text(
-                                        text = "${stats.boostRemainingSec}s",
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Black,
-                                        color = Color.White
-                                    )
-                                }
-                                Spacer(modifier = Modifier.height(3.dp))
-                                LinearProgressIndicator(
-                                    progress = { stats.boostProgress },
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(4.dp)
-                                        .clip(RoundedCornerShape(2.dp)),
-                                    color = Color(0xFF00E676),
-                                    trackColor = Color(0x3300E676)
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(4.dp))
-
-            // Main Stats Row: Distance, Active Power, Score & Dodges
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // Distance
-                Column {
-                    Text(
-                        text = "DISTANCE",
-                        fontSize = 9.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFF90CAF9),
-                        letterSpacing = 1.sp
-                    )
-                    Text(
-                        text = "${stats.distanceMeters}m",
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Black,
-                        color = Color.White
-                    )
-                }
-
-                // Active Power (Presented at the top just like distance travelled)
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(
-                        text = "ACTIVE POWER",
-                        fontSize = 9.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = when {
-                            stats.hasShield -> Color(0xFF00E5FF)
-                            stats.isBoosting -> Color(0xFF00E676)
-                            stats.isScoreBoosted -> Color(0xFFFFD54F)
-                            else -> Color(0xFF78909C)
-                        },
-                        letterSpacing = 1.sp
-                    )
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        when {
-                            stats.hasShield -> {
-                                Icon(
-                                    imageVector = Icons.Default.Security,
-                                    contentDescription = "Shield Active",
-                                    tint = Color(0xFF00E5FF),
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Spacer(modifier = Modifier.width(3.dp))
-                                Text(
-                                    text = "SHIELD ${stats.shieldRemainingSec}s",
-                                    fontSize = 15.sp,
-                                    fontWeight = FontWeight.Black,
-                                    color = Color(0xFF00E5FF)
-                                )
-                            }
-                            stats.isBoosting -> {
-                                Icon(
-                                    imageVector = Icons.Default.Speed,
-                                    contentDescription = "Hyper Boost Active",
-                                    tint = Color(0xFF00E676),
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Spacer(modifier = Modifier.width(3.dp))
-                                Text(
-                                    text = "BOOST ${stats.boostRemainingSec}s",
-                                    fontSize = 15.sp,
-                                    fontWeight = FontWeight.Black,
-                                    color = Color(0xFF00E676)
-                                )
-                            }
-                            stats.isScoreBoosted -> {
-                                Icon(
-                                    imageVector = Icons.Default.Stars,
-                                    contentDescription = "Score Multiplier Active",
-                                    tint = Color(0xFFFFD54F),
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Spacer(modifier = Modifier.width(3.dp))
-                                Text(
-                                    text = "${stats.scoreMultiplierValue}X (${stats.scoreMultiplierRemainingSec}s)",
-                                    fontSize = 15.sp,
-                                    fontWeight = FontWeight.Black,
-                                    color = Color(0xFFFFD54F)
-                                )
-                            }
-                            else -> {
-                                Text(
-                                    text = "NONE",
-                                    fontSize = 15.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color(0xFF546E7A)
-                                )
-                            }
-                        }
-                    }
-                }
-
-                // Score
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(
-                        text = "SCORE",
-                        fontSize = 9.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFFFFD54F),
-                        letterSpacing = 1.sp
-                    )
-                    Text(
-                        text = "$currentScore",
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Black,
-                        color = if (stats.hasBeatenHighScore) Color(0xFFFFD54F) else Color.White
-                    )
-                }
-
-                // Dodged
-                Column(horizontalAlignment = Alignment.End) {
-                    Text(
-                        text = "DODGED",
-                        fontSize = 9.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFF81C784),
-                        letterSpacing = 1.sp
-                    )
-                    Text(
-                        text = "${stats.ballsDodged}",
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Black,
-                        color = Color.White
-                    )
-                }
-            }
-
-            // Real-time High Score Chase Bar
+            // Real-time hairline high score progress line along bottom of HUD bar
             if (stats.highScoreToBeat > 0) {
-                Spacer(modifier = Modifier.height(6.dp))
-                val progress = if (stats.highScoreToBeat > 0) {
-                    (stats.score.toFloat() / stats.highScoreToBeat.toFloat()).coerceIn(0f, 1f)
-                } else 1f
+                val progress = (stats.score.toFloat() / stats.highScoreToBeat.toFloat()).coerceIn(0f, 1f)
+                LinearProgressIndicator(
+                    progress = { progress },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(2.dp),
+                    color = if (stats.hasBeatenHighScore) Color(0xFFFFD54F) else Color(0xFF00E5FF),
+                    trackColor = Color(0x22FFFFFF)
+                )
+            }
+        }
+    }
+}
 
+@Composable
+private fun ActivePowerPill(stats: LiveGameStats) {
+    when {
+        stats.hasShield -> {
+            Surface(
+                shape = RoundedCornerShape(6.dp),
+                color = Color(0x3300E5FF),
+                border = androidx.compose.foundation.BorderStroke(0.6.dp, Color(0xFF00E5FF))
+            ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                 ) {
                     Icon(
-                        imageVector = Icons.Default.EmojiEvents,
-                        contentDescription = null,
-                        tint = if (stats.hasBeatenHighScore) Color(0xFFFFD54F) else Color(0xFF78909C),
-                        modifier = Modifier.size(13.dp)
+                        imageVector = Icons.Default.Security,
+                        contentDescription = "Shield Active",
+                        tint = Color(0xFF00E5FF),
+                        modifier = Modifier.size(11.dp)
                     )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    LinearProgressIndicator(
-                        progress = { progress },
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(5.dp)
-                            .clip(RoundedCornerShape(3.dp)),
-                        color = if (stats.hasBeatenHighScore) Color(0xFFFFD54F) else Color(0xFF00E5FF),
-                        trackColor = Color(0x33FFFFFF)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
+                    Spacer(modifier = Modifier.width(3.dp))
                     Text(
-                        text = if (stats.hasBeatenHighScore) "NEW RECORD!" else "BEST: ${stats.highScoreToBeat}",
+                        text = "SHIELD ${stats.shieldRemainingSec}s",
                         fontSize = 9.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = if (stats.hasBeatenHighScore) Color(0xFFFFD54F) else Color(0xFFB0BEC5)
+                        fontWeight = FontWeight.Black,
+                        color = Color(0xFF00E5FF)
+                    )
+                }
+            }
+        }
+        stats.isBoosting -> {
+            Surface(
+                shape = RoundedCornerShape(6.dp),
+                color = Color(0x3300E676),
+                border = androidx.compose.foundation.BorderStroke(0.6.dp, Color(0xFF00E676))
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Speed,
+                        contentDescription = "Boost Active",
+                        tint = Color(0xFF00E676),
+                        modifier = Modifier.size(11.dp)
+                    )
+                    Spacer(modifier = Modifier.width(3.dp))
+                    Text(
+                        text = "BOOST ${stats.boostRemainingSec}s",
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Black,
+                        color = Color(0xFF00E676)
+                    )
+                }
+            }
+        }
+        stats.isScoreBoosted -> {
+            Surface(
+                shape = RoundedCornerShape(6.dp),
+                color = Color(0x33FFD54F),
+                border = androidx.compose.foundation.BorderStroke(0.6.dp, Color(0xFFFFD54F))
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Stars,
+                        contentDescription = "Multiplier Active",
+                        tint = Color(0xFFFFD54F),
+                        modifier = Modifier.size(11.dp)
+                    )
+                    Spacer(modifier = Modifier.width(3.dp))
+                    Text(
+                        text = "${stats.scoreMultiplierValue}X (${stats.scoreMultiplierRemainingSec}s)",
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Black,
+                        color = Color(0xFFFFD54F)
+                    )
+                }
+            }
+        }
+        stats.orbsCollected > 0 && !stats.isBoosting -> {
+            Surface(
+                shape = RoundedCornerShape(6.dp),
+                color = Color(0x33FFD700),
+                border = androidx.compose.foundation.BorderStroke(0.6.dp, Color(0xFFFFD700))
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Bolt,
+                        contentDescription = "Orbs",
+                        tint = Color(0xFFFFD700),
+                        modifier = Modifier.size(11.dp)
+                    )
+                    Spacer(modifier = Modifier.width(3.dp))
+                    Text(
+                        text = "ORBS ${stats.orbsCollected}/${stats.maxOrbsForBoost}",
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Black,
+                        color = Color(0xFFFFD700)
                     )
                 }
             }

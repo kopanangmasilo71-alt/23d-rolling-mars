@@ -310,10 +310,20 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
 
         physics.onShieldDeflected = {
             _shieldDeflectedAlert.value = true
-            triggerHaptic(160)
             viewModelScope.launch {
                 delay(2000)
-                _shieldDeflectedAlert.value = false
+                if (_shieldDeflectedAlert.value == true) {
+                    _shieldDeflectedAlert.value = false
+                }
+            }
+        }
+
+        physics.onPlayerHitObstacle = { _, isShieldBreak ->
+            triggerObstacleCollisionHaptic(isFatal = !isShieldBreak)
+            if (!isShieldBreak) {
+                triggerScreenShake(32.0f)
+            } else {
+                triggerScreenShake(18.0f)
             }
         }
 
@@ -682,6 +692,62 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /**
+     * Dedicated obstacle collision and damage haptic feedback.
+     * Generates a realistic tactile vibration response:
+     * - Fatal collision: Heavy multi-burst shuddering rumble (strong initial jolt decaying into high-frequency impact ripples).
+     * - Shield damage / deflection: Crisp high-energy double-pulse vibration.
+     */
+    fun triggerObstacleCollisionHaptic(isFatal: Boolean) {
+        if (!_vibrationEnabled.value) return
+        if (isFatal) {
+            // Fatal direct boulder collision: Heavy multi-burst shuddering rumble (430ms total)
+            triggerHapticPattern(
+                timings = longArrayOf(0, 180, 45, 130, 30, 90),
+                amplitudes = intArrayOf(0, 255, 0, 220, 0, 150)
+            )
+        } else {
+            // Shield deflection & damage absorption: Crisp metallic shockwave double-pulse (275ms total)
+            triggerHapticPattern(
+                timings = longArrayOf(0, 95, 35, 115),
+                amplitudes = intArrayOf(0, 220, 0, 170)
+            )
+        }
+    }
+
+    /**
+     * Executes custom waveform vibration patterns on supported devices,
+     * with graceful fallback for devices without amplitude control or older APIs.
+     */
+    fun triggerHapticPattern(timings: LongArray, amplitudes: IntArray? = null) {
+        if (!_vibrationEnabled.value) return
+        try {
+            val context = getApplication<Application>()
+            val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                val manager = context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as? VibratorManager
+                manager?.defaultVibrator
+            } else {
+                @Suppress("DEPRECATION")
+                context.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
+            } ?: return
+
+            if (!vibrator.hasVibrator()) return
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                if (amplitudes != null && amplitudes.size == timings.size && vibrator.hasAmplitudeControl()) {
+                    vibrator.vibrate(VibrationEffect.createWaveform(timings, amplitudes, -1))
+                } else {
+                    vibrator.vibrate(VibrationEffect.createWaveform(timings, -1))
+                }
+            } else {
+                @Suppress("DEPRECATION")
+                vibrator.vibrate(timings, -1)
+            }
+        } catch (_: Throwable) {
+            // Ignore if vibration unavailable
+        }
+    }
+
     fun triggerHaptic(durationMs: Long, heavy: Boolean = false) {
         if (!_vibrationEnabled.value) return
         try {
@@ -693,6 +759,8 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
                 @Suppress("DEPRECATION")
                 context.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
             } ?: return
+
+            if (!vibrator.hasVibrator()) return
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 val amplitude = if (heavy) VibrationEffect.DEFAULT_AMPLITUDE else 180
