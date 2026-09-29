@@ -94,7 +94,7 @@ fun TouchController(
                         onHoldChange = onLeftChange
                     )
                     TouchPadButton(
-                        icon = Icons.Default.ArrowUpward,
+                        icon = AppIcons.ArrowUpward,
                         label = "JUMP",
                         testTag = "btn_jump",
                         size = 64.dp,
@@ -113,7 +113,7 @@ fun TouchController(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     TouchPadButton(
-                        icon = Icons.Default.FlashOn,
+                        icon = AppIcons.FlashOn,
                         label = if (hasAmmo) "SHOOT" else "EMPTY",
                         testTag = "btn_shoot",
                         size = 64.dp,
@@ -159,7 +159,7 @@ fun TouchController(
                         onHoldChange = onLeftChange
                     )
                     TouchPadButton(
-                        icon = Icons.Default.ArrowUpward,
+                        icon = AppIcons.ArrowUpward,
                         label = "JUMP",
                         testTag = "btn_jump",
                         size = 62.dp,
@@ -175,7 +175,7 @@ fun TouchController(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     TouchPadButton(
-                        icon = Icons.Default.FlashOn,
+                        icon = AppIcons.FlashOn,
                         label = if (hasAmmo) "SHOOT" else "EMPTY",
                         testTag = "btn_shoot",
                         size = 62.dp,

@@ -72,7 +72,11 @@ data class LiveGameStats(
     val dynamicFrequencyMultiplier: Float = 1.0f,
     val threatLevel: Int = 1,
     val threatLevelName: String = "STABLE",
-    val threatLevelColorHex: Long = 0xFF00E5FF
+    val threatLevelColorHex: Long = 0xFF00E5FF,
+    val waveIndex: Int = 1,
+    val wavePatternName: String = "SOLO PATROL",
+    val currentSpawnInterval: Float = 2.2f,
+    val isBreatherWave: Boolean = false
 )
 
 data class GameOverSummary(
@@ -378,6 +382,20 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
 
+        physics.onHazardWaveSpawned = { waveIndex, pattern, interval ->
+            if (pattern != com.example.engine.HazardPattern.SOLO_PATROL) {
+                val intervalStr = String.format(java.util.Locale.US, "%.1fs", interval)
+                val alertMsg = "WAVE $waveIndex • ${pattern.displayName.uppercase()} ($intervalStr)"
+                _dodgeFeedbackAlert.value = alertMsg
+                viewModelScope.launch {
+                    delay(1400)
+                    if (_dodgeFeedbackAlert.value == alertMsg) {
+                        _dodgeFeedbackAlert.value = null
+                    }
+                }
+            }
+        }
+
         renderer = GameRenderer(physics)
     }
 
@@ -606,7 +624,11 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
                 dynamicFrequencyMultiplier = physics.dynamicFrequencyMultiplier,
                 threatLevel = physics.currentThreatLevel.level,
                 threatLevelName = physics.currentThreatLevel.name,
-                threatLevelColorHex = physics.currentThreatLevel.badgeColorHex
+                threatLevelColorHex = physics.currentThreatLevel.badgeColorHex,
+                waveIndex = physics.waveCount,
+                wavePatternName = physics.currentHazardPattern.displayName,
+                currentSpawnInterval = physics.currentSpawnInterval,
+                isBreatherWave = physics.isBreatherWave
             )
         }
     }

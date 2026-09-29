@@ -58,12 +58,15 @@ fun GameOverOverlay(
 ) {
     val summary by viewModel.gameOverSummary.collectAsStateWithLifecycle()
     val topRecord by viewModel.topRecord.collectAsStateWithLifecycle()
+    val currentScore by viewModel.currentScore.collectAsStateWithLifecycle()
+    val displayScore = if (summary.score > 0) summary.score else currentScore
     var showHighScoresModal by remember { mutableStateOf(false) }
 
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(Color(0xD9060A14)),
+            .background(Color(0xD9060A14))
+            .testTag("game_over_overlay"),
         contentAlignment = Alignment.Center
     ) {
         Card(
@@ -98,7 +101,7 @@ fun GameOverOverlay(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Icon(
-                                imageVector = Icons.Default.EmojiEvents,
+                                imageVector = AppIcons.EmojiEvents,
                                 contentDescription = null,
                                 tint = Color(0xFFFFD54F),
                                 modifier = Modifier.size(20.dp)
@@ -115,7 +118,7 @@ fun GameOverOverlay(
                     }
                 }
 
-                // Rank / Grade Badge and Title
+                // Title and Rank / Grade Badge
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -123,14 +126,15 @@ fun GameOverOverlay(
                 ) {
                     Column {
                         Text(
-                            text = "RUN TERMINATED",
-                            fontSize = 22.sp,
+                            text = "GAME OVER",
+                            fontSize = 24.sp,
                             fontWeight = FontWeight.Black,
                             color = Color(0xFFFF5252),
-                            letterSpacing = 1.5.sp
+                            letterSpacing = 1.5.sp,
+                            modifier = Modifier.testTag("game_over_title")
                         )
                         Text(
-                            text = "${summary.sectorReached} • ${summary.difficultyMode.uppercase()}",
+                            text = "COLLISION • ${summary.sectorReached}",
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
                             color = Color(0xFF00E5FF),
@@ -169,7 +173,9 @@ fun GameOverOverlay(
                     shape = RoundedCornerShape(16.dp),
                     color = Color(0x2AFFFFFF),
                     border = androidx.compose.foundation.BorderStroke(0.5.dp, Color(0x33FFFFFF)),
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("final_score_card")
                 ) {
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
@@ -177,16 +183,17 @@ fun GameOverOverlay(
                     ) {
                         Text(
                             text = "FINAL SCORE",
-                            fontSize = 11.sp,
+                            fontSize = 12.sp,
                             fontWeight = FontWeight.Bold,
                             color = Color(0xFFFFD54F),
                             letterSpacing = 1.5.sp
                         )
                         Text(
-                            text = "${summary.score}",
-                            fontSize = 36.sp,
+                            text = "$displayScore",
+                            fontSize = 40.sp,
                             fontWeight = FontWeight.Black,
-                            color = Color.White
+                            color = Color.White,
+                            modifier = Modifier.testTag("final_score")
                         )
                         if (!summary.isNewHighScore && (topRecord?.score ?: 0) > 0) {
                             Text(
@@ -198,7 +205,32 @@ fun GameOverOverlay(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // Primary Restart Button
+                Button(
+                    onClick = { viewModel.restartGame() },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFF00E5FF),
+                        contentColor = Color(0xFF0A0E1A)
+                    ),
+                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(52.dp)
+                        .testTag("restart_button")
+                ) {
+                    Icon(imageVector = Icons.Default.Refresh, contentDescription = "Restart")
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "RESTART",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Black,
+                        letterSpacing = 1.sp
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
 
                 // Stats Breakdown Grid
                 Surface(
@@ -222,32 +254,7 @@ fun GameOverOverlay(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(20.dp))
-
-                // Primary Retry Button
-                Button(
-                    onClick = { viewModel.restartGame() },
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFF00E5FF),
-                        contentColor = Color(0xFF0A0E1A)
-                    ),
-                    shape = RoundedCornerShape(14.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(52.dp)
-                        .testTag("retry_button")
-                ) {
-                    Icon(imageVector = Icons.Default.Refresh, contentDescription = null)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "REPLAY RUN",
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Black,
-                        letterSpacing = 1.sp
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(10.dp))
+                Spacer(modifier = Modifier.height(12.dp))
 
                 // Secondary Buttons: Leaderboard & Main Menu
                 Row(
@@ -264,7 +271,7 @@ fun GameOverOverlay(
                             .height(46.dp)
                             .testTag("view_leaderboard_button")
                     ) {
-                        Icon(imageVector = Icons.Default.Leaderboard, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Icon(imageVector = AppIcons.Leaderboard, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(modifier = Modifier.width(6.dp))
                         Text("RANKS", fontSize = 13.sp, fontWeight = FontWeight.Bold)
                     }

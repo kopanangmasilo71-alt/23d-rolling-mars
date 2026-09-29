@@ -48,8 +48,33 @@ class GameRenderer(val physics: GamePhysicsEngine) : GLSurfaceView.Renderer {
     private val mvpMatrix = FloatArray(16)
     private val matrixStack = MatrixStack()
 
+    // Pre-allocated static arrays to guarantee zero GC allocation during 60 FPS rendering
+    companion object {
+        private val SIDE_OFFSETS = floatArrayOf(-1f, 1f)
+        private val SIDE_AMMUNITION = floatArrayOf(-0.11f, 0.11f)
+        private val WING_OFFSETS = floatArrayOf(-0.12f, 0.12f)
+        private val FIN_ANGLES = floatArrayOf(-35f, -15f, 15f, 35f)
+        private val PORT_OFFSETS_X = floatArrayOf(-0.16f, 0.16f, -0.16f, 0.16f)
+        private val PORT_OFFSETS_Y = floatArrayOf(0.18f, 0.18f, -0.06f, -0.06f)
+        private val CURB_RED = floatArrayOf(0.96f, 0.20f, 0.15f, 1f)
+        private val CURB_WHITE = floatArrayOf(0.95f, 0.96f, 0.98f, 1f)
+        private val ROAD_COLOR = floatArrayOf(0.11f, 0.13f, 0.18f, 1f)
+        private val GRASS_COLOR = floatArrayOf(0.06f, 0.16f, 0.12f, 1f)
+        private val NEON_CYAN = floatArrayOf(0.00f, 0.95f, 1.00f, 1.0f)
+        private val WHITE_DIVIDER = floatArrayOf(0.88f, 0.90f, 0.96f, 0.70f)
+        private val POST_COLOR = floatArrayOf(0.14f, 0.16f, 0.22f, 1f)
+        private val CROSSBAR_COLOR = floatArrayOf(0.12f, 0.14f, 0.20f, 1f)
+        private val SPEED_PAD_COLOR = floatArrayOf(0.0f, 0.95f, 1.0f, 1.0f)
+        private val WHITE_COLOR = floatArrayOf(1.0f, 1.0f, 1.0f, 1.0f)
+        private val SHADOW_COLOR = floatArrayOf(0.02f, 0.03f, 0.05f, 0.55f)
+        private val TRAIL_OFFSETS = floatArrayOf(0.70f, 1.85f, 3.20f, 4.75f, 6.40f)
+        private val TRAIL_BASE_LENS = floatArrayOf(1.10f, 1.40f, 1.60f, 1.80f, 2.00f)
+        private val TRAIL_ALPHAS = floatArrayOf(0.75f, 0.55f, 0.35f, 0.20f, 0.10f)
+    }
+
     // Meshes
     private var isReady: Boolean = false
+    private var lastBoundMesh: Mesh? = null
     private lateinit var cubeMesh: Mesh
     private lateinit var roadQuadMesh: Mesh
     private lateinit var grassQuadMesh: Mesh
@@ -511,6 +536,7 @@ class GameRenderer(val physics: GamePhysicsEngine) : GLSurfaceView.Renderer {
             GLES20.glUniform1f(uSpeedRatioLoc, speedRatio)
 
             matrixStack.reset()
+            lastBoundMesh = null
 
             // 1. Panoramic Sky Backdrop & Celestial Horizon Sun (rendered with depth write disabled)
             renderSkyBackdrop()
@@ -545,6 +571,46 @@ class GameRenderer(val physics: GamePhysicsEngine) : GLSurfaceView.Renderer {
 
     private fun drawMesh(
         mesh: Mesh,
+        r: Float,
+        g: Float,
+        b: Float,
+        a: Float = 1f,
+        emissive: Float = 0f,
+        curvature: Float = 0.00095f
+    ) {
+        if (!isReady || programId == 0 || aPositionLoc < 0) return
+
+        val model = matrixStack.get()
+        if (uModelMatrixLoc >= 0) GLES20.glUniformMatrix4fv(uModelMatrixLoc, 1, false, model, 0)
+        if (uCurvatureLoc >= 0) GLES20.glUniform1f(uCurvatureLoc, curvature)
+        if (uEmissiveLoc >= 0) GLES20.glUniform1f(uEmissiveLoc, emissive)
+        if (uColorOverrideLoc >= 0) GLES20.glUniform4f(uColorOverrideLoc, r, g, b, a)
+
+        if (lastBoundMesh !== mesh) {
+            lastBoundMesh = mesh
+            mesh.vertexBuffer.position(0)
+            GLES20.glVertexAttribPointer(aPositionLoc, Primitives.POSITION_COMPONENT_COUNT, GLES20.GL_FLOAT, false, Primitives.STRIDE, mesh.vertexBuffer)
+            GLES20.glEnableVertexAttribArray(aPositionLoc)
+
+            if (aNormalLoc >= 0) {
+                mesh.vertexBuffer.position(Primitives.POSITION_COMPONENT_COUNT)
+                GLES20.glVertexAttribPointer(aNormalLoc, Primitives.NORMAL_COMPONENT_COUNT, GLES20.GL_FLOAT, false, Primitives.STRIDE, mesh.vertexBuffer)
+                GLES20.glEnableVertexAttribArray(aNormalLoc)
+            }
+
+            if (aColorLoc >= 0) {
+                mesh.vertexBuffer.position(Primitives.POSITION_COMPONENT_COUNT + Primitives.NORMAL_COMPONENT_COUNT)
+                GLES20.glVertexAttribPointer(aColorLoc, Primitives.COLOR_COMPONENT_COUNT, GLES20.GL_FLOAT, false, Primitives.STRIDE, mesh.vertexBuffer)
+                GLES20.glEnableVertexAttribArray(aColorLoc)
+            }
+        }
+
+        mesh.indexBuffer.position(0)
+        GLES20.glDrawElements(GLES20.GL_TRIANGLES, mesh.indexCount, GLES20.GL_UNSIGNED_SHORT, mesh.indexBuffer)
+    }
+
+    private fun drawMesh(
+        mesh: Mesh,
         colorOverride: FloatArray? = null,
         emissive: Float = 0f,
         curvature: Float = 0.00095f
@@ -568,20 +634,23 @@ class GameRenderer(val physics: GamePhysicsEngine) : GLSurfaceView.Renderer {
             }
         }
 
-        mesh.vertexBuffer.position(0)
-        GLES20.glVertexAttribPointer(aPositionLoc, Primitives.POSITION_COMPONENT_COUNT, GLES20.GL_FLOAT, false, Primitives.STRIDE, mesh.vertexBuffer)
-        GLES20.glEnableVertexAttribArray(aPositionLoc)
+        if (lastBoundMesh !== mesh) {
+            lastBoundMesh = mesh
+            mesh.vertexBuffer.position(0)
+            GLES20.glVertexAttribPointer(aPositionLoc, Primitives.POSITION_COMPONENT_COUNT, GLES20.GL_FLOAT, false, Primitives.STRIDE, mesh.vertexBuffer)
+            GLES20.glEnableVertexAttribArray(aPositionLoc)
 
-        if (aNormalLoc >= 0) {
-            mesh.vertexBuffer.position(Primitives.POSITION_COMPONENT_COUNT)
-            GLES20.glVertexAttribPointer(aNormalLoc, Primitives.NORMAL_COMPONENT_COUNT, GLES20.GL_FLOAT, false, Primitives.STRIDE, mesh.vertexBuffer)
-            GLES20.glEnableVertexAttribArray(aNormalLoc)
-        }
+            if (aNormalLoc >= 0) {
+                mesh.vertexBuffer.position(Primitives.POSITION_COMPONENT_COUNT)
+                GLES20.glVertexAttribPointer(aNormalLoc, Primitives.NORMAL_COMPONENT_COUNT, GLES20.GL_FLOAT, false, Primitives.STRIDE, mesh.vertexBuffer)
+                GLES20.glEnableVertexAttribArray(aNormalLoc)
+            }
 
-        if (aColorLoc >= 0) {
-            mesh.vertexBuffer.position(Primitives.POSITION_COMPONENT_COUNT + Primitives.NORMAL_COMPONENT_COUNT)
-            GLES20.glVertexAttribPointer(aColorLoc, Primitives.COLOR_COMPONENT_COUNT, GLES20.GL_FLOAT, false, Primitives.STRIDE, mesh.vertexBuffer)
-            GLES20.glEnableVertexAttribArray(aColorLoc)
+            if (aColorLoc >= 0) {
+                mesh.vertexBuffer.position(Primitives.POSITION_COMPONENT_COUNT + Primitives.NORMAL_COMPONENT_COUNT)
+                GLES20.glVertexAttribPointer(aColorLoc, Primitives.COLOR_COMPONENT_COUNT, GLES20.GL_FLOAT, false, Primitives.STRIDE, mesh.vertexBuffer)
+                GLES20.glEnableVertexAttribArray(aColorLoc)
+            }
         }
 
         mesh.indexBuffer.position(0)
@@ -662,18 +731,18 @@ class GameRenderer(val physics: GamePhysicsEngine) : GLSurfaceView.Renderer {
             // Asphalt Speedway Surface
             matrixStack.push()
             matrixStack.translate(0f, 0f, centerZ)
-            drawMesh(roadQuadMesh, floatArrayOf(0.11f, 0.13f, 0.18f, 1f))
+            drawMesh(roadQuadMesh, ROAD_COLOR)
             matrixStack.pop()
 
             // Left & Right Terrain Banks
             matrixStack.push()
             matrixStack.translate(-(halfW + 22.5f), -0.02f, centerZ)
-            drawMesh(grassQuadMesh, floatArrayOf(0.06f, 0.16f, 0.12f, 1f))
+            drawMesh(grassQuadMesh, GRASS_COLOR)
             matrixStack.pop()
 
             matrixStack.push()
             matrixStack.translate(halfW + 22.5f, -0.02f, centerZ)
-            drawMesh(grassQuadMesh, floatArrayOf(0.06f, 0.16f, 0.12f, 1f))
+            drawMesh(grassQuadMesh, GRASS_COLOR)
             matrixStack.pop()
 
             // Curbs: Alternating Red & White Hazard Curbs (Matches Reference Art!)
@@ -682,7 +751,7 @@ class GameRenderer(val physics: GamePhysicsEngine) : GLSurfaceView.Renderer {
             for (cb in 0 until curbBlocks) {
                 val cz = seg.zStart - (cb + 0.5f) * curbStep
                 val isRed = (seg.id * curbBlocks + cb) % 2 == 0
-                val curbCol = if (isRed) floatArrayOf(0.96f, 0.20f, 0.15f, 1f) else floatArrayOf(0.95f, 0.96f, 0.98f, 1f)
+                val curbCol = if (isRed) CURB_RED else CURB_WHITE
 
                 // Left curb
                 matrixStack.push()
@@ -709,21 +778,21 @@ class GameRenderer(val physics: GamePhysicsEngine) : GLSurfaceView.Renderer {
                 matrixStack.push()
                 matrixStack.translate(0f, 0.026f, dz)
                 matrixStack.scale(0.32f, 0.022f, 3.2f)
-                drawMesh(cubeMesh, floatArrayOf(0.00f, 0.95f, 1.00f, 1f), emissive = 1.0f)
+                drawMesh(cubeMesh, NEON_CYAN, emissive = 1.0f)
                 matrixStack.pop()
 
                 // Left White Lane Divider Marking
                 matrixStack.push()
                 matrixStack.translate(-2.4f, 0.02f, dz)
                 matrixStack.scale(0.14f, 0.018f, 1.8f)
-                drawMesh(cubeMesh, floatArrayOf(0.88f, 0.90f, 0.96f, 0.70f))
+                drawMesh(cubeMesh, WHITE_DIVIDER)
                 matrixStack.pop()
 
                 // Right White Lane Divider Marking
                 matrixStack.push()
                 matrixStack.translate(2.4f, 0.02f, dz)
                 matrixStack.scale(0.14f, 0.018f, 1.8f)
-                drawMesh(cubeMesh, floatArrayOf(0.88f, 0.90f, 0.96f, 0.70f))
+                drawMesh(cubeMesh, WHITE_DIVIDER)
                 matrixStack.pop()
             }
 
@@ -736,21 +805,21 @@ class GameRenderer(val physics: GamePhysicsEngine) : GLSurfaceView.Renderer {
                 matrixStack.push()
                 matrixStack.translate(-halfW - 0.35f, 3.6f, 0f)
                 matrixStack.scale(0.40f, 7.2f, 0.40f)
-                drawMesh(cubeMesh, floatArrayOf(0.14f, 0.16f, 0.22f, 1f))
+                drawMesh(cubeMesh, POST_COLOR)
                 matrixStack.pop()
 
                 // Right Dark Post
                 matrixStack.push()
                 matrixStack.translate(halfW + 0.35f, 3.6f, 0f)
                 matrixStack.scale(0.40f, 7.2f, 0.40f)
-                drawMesh(cubeMesh, floatArrayOf(0.14f, 0.16f, 0.22f, 1f))
+                drawMesh(cubeMesh, POST_COLOR)
                 matrixStack.pop()
 
                 // Overhead Dark Crossbar
                 matrixStack.push()
                 matrixStack.translate(0f, 7.2f, 0f)
                 matrixStack.scale(physics.roadWidth + 1.1f, 0.55f, 0.45f)
-                drawMesh(cubeMesh, floatArrayOf(0.12f, 0.14f, 0.20f, 1f))
+                drawMesh(cubeMesh, CROSSBAR_COLOR)
                 matrixStack.pop()
 
                 // Glowing Neon Cyan Portal Frame Strips (Facing Player)
@@ -758,21 +827,21 @@ class GameRenderer(val physics: GamePhysicsEngine) : GLSurfaceView.Renderer {
                 matrixStack.push()
                 matrixStack.translate(-halfW - 0.12f, 3.6f, -0.22f)
                 matrixStack.scale(0.08f, 7.0f, 0.04f)
-                drawMesh(cubeMesh, floatArrayOf(0.00f, 0.95f, 1.00f, 1.0f), emissive = 1.0f)
+                drawMesh(cubeMesh, NEON_CYAN, emissive = 1.0f)
                 matrixStack.pop()
 
                 // Right inner neon strip
                 matrixStack.push()
                 matrixStack.translate(halfW + 0.12f, 3.6f, -0.22f)
                 matrixStack.scale(0.08f, 7.0f, 0.04f)
-                drawMesh(cubeMesh, floatArrayOf(0.00f, 0.95f, 1.00f, 1.0f), emissive = 1.0f)
+                drawMesh(cubeMesh, NEON_CYAN, emissive = 1.0f)
                 matrixStack.pop()
 
                 // Top crossbar neon strip
                 matrixStack.push()
                 matrixStack.translate(0f, 7.15f, -0.24f)
                 matrixStack.scale(physics.roadWidth + 0.6f, 0.12f, 0.04f)
-                drawMesh(cubeMesh, floatArrayOf(0.00f, 0.95f, 1.00f, 1.0f), emissive = 1.0f)
+                drawMesh(cubeMesh, NEON_CYAN, emissive = 1.0f)
                 matrixStack.pop()
 
                 matrixStack.pop()
@@ -880,12 +949,12 @@ class GameRenderer(val physics: GamePhysicsEngine) : GLSurfaceView.Renderer {
                     matrixStack.pop()
 
                     // Dual glowing plasma cartridges
-                    for (side in listOf(-0.11f, 0.11f)) {
+                    for (side in SIDE_AMMUNITION) {
                         matrixStack.push()
                         matrixStack.rotate(totalTime * 80f, 0f, 1f, 0f)
                         matrixStack.translate(side, 0f, 0f)
                         matrixStack.scale(0.08f, 0.38f, 0.12f)
-                        drawMesh(cubeMesh, floatArrayOf(1.0f, 0.45f, 0.05f, 1f), emissive = 1.0f)
+                        drawMesh(cubeMesh, 1.0f, 0.45f, 0.05f, 1f, emissive = 1.0f)
                         matrixStack.pop()
                     }
 
@@ -1108,7 +1177,7 @@ class GameRenderer(val physics: GamePhysicsEngine) : GLSurfaceView.Renderer {
 
         // TITAN: Armored Hip Skirt Guards
         if (p.model == CharacterModelId.TITAN) {
-            for (side in listOf(-1f, 1f)) {
+            for (side in SIDE_OFFSETS) {
                 matrixStack.push()
                 matrixStack.translate(side * (waistW / 2f + 0.04f), legBaseY - 0.04f, 0f)
                 matrixStack.scale(0.08f, 0.20f, p.torsoDepth * 0.90f)
@@ -1220,8 +1289,9 @@ class GameRenderer(val physics: GamePhysicsEngine) : GLSurfaceView.Renderer {
                 matrixStack.pop()
 
                 // 4 Exhaust Ports (2x2 grid)
-                val portOffsets = listOf(-0.16f to 0.18f, 0.16f to 0.18f, -0.16f to -0.06f, 0.16f to -0.06f)
-                for ((ox, oy) in portOffsets) {
+                for (idx in 0 until 4) {
+                    val ox = PORT_OFFSETS_X[idx]
+                    val oy = PORT_OFFSETS_Y[idx]
                     matrixStack.push()
                     matrixStack.translate(ox, oy, p.torsoDepth / 2f + 0.24f)
                     matrixStack.scale(0.10f, 0.10f, 0.05f)
@@ -1266,7 +1336,7 @@ class GameRenderer(val physics: GamePhysicsEngine) : GLSurfaceView.Renderer {
                 matrixStack.pop()
 
                 // Dual Micro-Afterburners
-                for (ox in listOf(-0.12f, 0.12f)) {
+                for (ox in WING_OFFSETS) {
                     matrixStack.push()
                     matrixStack.translate(ox, -0.10f, p.torsoDepth / 2f + 0.12f)
                     matrixStack.scale(0.08f, 0.08f, 0.14f)
@@ -1330,8 +1400,7 @@ class GameRenderer(val physics: GamePhysicsEngine) : GLSurfaceView.Renderer {
                 matrixStack.pop()
 
                 // 4 Radiant Solar Winglet Tabs
-                val finAngles = listOf(-35f, -15f, 15f, 35f)
-                for (ang in finAngles) {
+                for (ang in FIN_ANGLES) {
                     matrixStack.push()
                     matrixStack.translate(0f, 0.12f, p.torsoDepth / 2f + 0.10f)
                     matrixStack.rotate(ang, 0f, 0f, 1f)
@@ -1402,7 +1471,7 @@ class GameRenderer(val physics: GamePhysicsEngine) : GLSurfaceView.Renderer {
                 matrixStack.pop()
 
                 // Dual Glowing Red/Amber Optical Slits
-                for (side in listOf(-0.11f, 0.11f)) {
+                for (side in SIDE_AMMUNITION) {
                     matrixStack.push()
                     matrixStack.translate(side, 0.02f, -p.headSize * 0.44f - 0.03f)
                     matrixStack.scale(0.08f, 0.045f, 0.04f)
@@ -1426,7 +1495,7 @@ class GameRenderer(val physics: GamePhysicsEngine) : GLSurfaceView.Renderer {
                 matrixStack.pop()
 
                 // Dual Swept Side Aero Antenna Fins
-                for (side in listOf(-1f, 1f)) {
+                for (side in SIDE_OFFSETS) {
                     matrixStack.push()
                     matrixStack.translate(side * (p.headSize * 0.48f), p.headSize * 0.18f, p.headSize * 0.10f)
                     matrixStack.rotate(side * 22f, 0f, 0f, 1f)
@@ -1452,7 +1521,7 @@ class GameRenderer(val physics: GamePhysicsEngine) : GLSurfaceView.Renderer {
                 matrixStack.pop()
 
                 // Dual Ninja Cowl Horns / Ears
-                for (side in listOf(-1f, 1f)) {
+                for (side in SIDE_OFFSETS) {
                     matrixStack.push()
                     matrixStack.translate(side * (p.headSize * 0.35f), p.headSize * 0.55f, 0f)
                     matrixStack.rotate(side * 18f, 0f, 0f, 1f)
@@ -1876,7 +1945,7 @@ class GameRenderer(val physics: GamePhysicsEngine) : GLSurfaceView.Renderer {
             // Inner super-bright incandescent white energy core
             matrixStack.push()
             matrixStack.scale(pr.radius * 0.38f, pr.radius * 0.38f, 0.95f)
-            drawMesh(cubeMesh, floatArrayOf(1.0f, 1.0f, 1.0f, 1.0f), emissive = 1.0f)
+            drawMesh(cubeMesh, WHITE_COLOR, emissive = 1.0f)
             matrixStack.pop()
 
             // Outer radiant cyan plasma bolt
@@ -1893,21 +1962,15 @@ class GameRenderer(val physics: GamePhysicsEngine) : GLSurfaceView.Renderer {
         GLES20.glBlendFunc(GLES20.GL_SRC_ALPHA, GLES20.GL_ONE_MINUS_SRC_ALPHA)
         GLES20.glDepthMask(false)
 
-        val trailSegments = listOf(
-            Triple(0.70f, 1.10f, 0.75f),  // (offsetZ behind bullet, segmentLength, alpha)
-            Triple(1.85f, 1.40f, 0.55f),
-            Triple(3.20f, 1.60f, 0.35f),
-            Triple(4.75f, 1.80f, 0.20f),
-            Triple(6.40f, 2.00f, 0.10f)
-        )
-
         for (pr in projs) {
             if (!pr.isActive) continue
             val distTraveled = (pr.startZ - pr.position.z).coerceAtLeast(0f)
             if (distTraveled <= 0.1f) continue
 
-            for (i in trailSegments.indices) {
-                val (offsetZ, baseLen, alpha) = trailSegments[i]
+            for (i in TRAIL_OFFSETS.indices) {
+                val offsetZ = TRAIL_OFFSETS[i]
+                val baseLen = TRAIL_BASE_LENS[i]
+                val alpha = TRAIL_ALPHAS[i]
                 if (offsetZ - baseLen / 2f >= distTraveled) continue
 
                 // Clamp trail segment so it NEVER extends behind the firing muzzle / player
@@ -1915,18 +1978,18 @@ class GameRenderer(val physics: GamePhysicsEngine) : GLSurfaceView.Renderer {
                 val segZ = pr.position.z + offsetZ
                 if (segZ > pr.startZ) continue // Strictly forward of the firing point
 
-                val taper = 1.0f - (i.toFloat() / trailSegments.size.toFloat()) * 0.65f
+                val taper = 1.0f - (i.toFloat() / TRAIL_OFFSETS.size.toFloat()) * 0.65f
                 val thickness = pr.radius * 0.55f * taper
 
                 matrixStack.push()
                 matrixStack.translate(pr.position.x, pr.position.y, segZ)
                 matrixStack.scale(thickness, thickness, clampedLen)
-                drawMesh(cubeMesh, floatArrayOf(0.0f, 0.95f, 1.0f, alpha), emissive = 0.95f)
+                drawMesh(cubeMesh, 0.0f, 0.95f, 1.0f, alpha, emissive = 0.95f)
 
                 // Thin luminous center core for the frontmost trail segment
                 if (i == 0) {
                     matrixStack.scale(0.45f, 0.45f, 0.85f)
-                    drawMesh(cubeMesh, floatArrayOf(1.0f, 1.0f, 1.0f, alpha * 0.85f), emissive = 1.0f)
+                    drawMesh(cubeMesh, 1.0f, 1.0f, 1.0f, alpha * 0.85f, emissive = 1.0f)
                 }
                 matrixStack.pop()
             }

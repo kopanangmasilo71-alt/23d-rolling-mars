@@ -170,7 +170,7 @@ fun GameHud(
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(
-                                imageVector = Icons.Default.Bolt,
+                                imageVector = AppIcons.Bolt,
                                 contentDescription = null,
                                 tint = Color(0xFF00E5FF),
                                 modifier = Modifier.size(18.dp)
@@ -308,12 +308,12 @@ fun GameHud(
                     ) {
                         Icon(
                             imageVector = when (col) {
-                                com.example.engine.CollectibleType.SHIELD -> Icons.Default.Security
-                                com.example.engine.CollectibleType.SPEED_BOOST -> Icons.Default.Speed
-                                com.example.engine.CollectibleType.SCORE_MULTIPLIER -> Icons.Default.Stars
-                                com.example.engine.CollectibleType.ENERGY_CELL -> Icons.Default.Bolt
-                                com.example.engine.CollectibleType.ENERGY_ORB -> Icons.Default.Stars
-                                com.example.engine.CollectibleType.AMMO_PACK -> Icons.Default.FlashOn
+                                com.example.engine.CollectibleType.SHIELD -> AppIcons.Security
+                                com.example.engine.CollectibleType.SPEED_BOOST -> AppIcons.Speed
+                                com.example.engine.CollectibleType.SCORE_MULTIPLIER -> AppIcons.Stars
+                                com.example.engine.CollectibleType.ENERGY_CELL -> AppIcons.Bolt
+                                com.example.engine.CollectibleType.ENERGY_ORB -> AppIcons.Stars
+                                com.example.engine.CollectibleType.AMMO_PACK -> AppIcons.FlashOn
                             },
                             contentDescription = null,
                             tint = colColor,
@@ -361,7 +361,7 @@ fun GameHud(
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
                 ) {
                     Icon(
-                        imageVector = Icons.Default.Security,
+                        imageVector = AppIcons.Security,
                         contentDescription = "Shield Deflected",
                         tint = Color(0xFF00E5FF),
                         modifier = Modifier.size(28.dp)
@@ -417,7 +417,7 @@ fun GameHud(
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp)
                 ) {
                     Icon(
-                        imageVector = Icons.Default.Bolt,
+                        imageVector = AppIcons.Bolt,
                         contentDescription = null,
                         tint = Color(0xFFFFD700),
                         modifier = Modifier.size(20.dp)
@@ -558,6 +558,23 @@ private fun TopHudBar(
 
                         Surface(
                             shape = RoundedCornerShape(6.dp),
+                            color = if (stats.isBreatherWave) Color(0x3300E676) else Color(0x33FF9100),
+                            border = androidx.compose.foundation.BorderStroke(
+                                0.6.dp,
+                                if (stats.isBreatherWave) Color(0xFF00E676) else Color(0xFFFF9100)
+                            )
+                        ) {
+                            Text(
+                                text = if (stats.isBreatherWave) "BREATHER" else "WAVE ${stats.waveIndex} (${String.format(java.util.Locale.US, "%.1fs", stats.currentSpawnInterval)})",
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Black,
+                                color = if (stats.isBreatherWave) Color(0xFF00E676) else Color(0xFFFF9100),
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
                             color = Color(0x22FFFFFF),
                             border = androidx.compose.foundation.BorderStroke(0.5.dp, Color(0x44FFFFFF))
                         ) {
@@ -652,7 +669,7 @@ private fun TopHudBar(
                                 modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                             ) {
                                 Icon(
-                                    imageVector = Icons.Default.FlashOn,
+                                    imageVector = AppIcons.FlashOn,
                                     contentDescription = "Ammo",
                                     tint = ammoBadgeColor,
                                     modifier = Modifier.size(11.dp)
@@ -752,7 +769,7 @@ private fun TopHudBar(
                                     modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                                 ) {
                                     Icon(
-                                        imageVector = Icons.Default.FlashOn,
+                                        imageVector = AppIcons.FlashOn,
                                         contentDescription = "Ammo",
                                         tint = ammoBadgeColor,
                                         modifier = Modifier.size(11.dp)
@@ -812,6 +829,23 @@ private fun TopHudBar(
                                 fontWeight = FontWeight.Bold,
                                 color = Color(0xFF81C784)
                             )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Surface(
+                                shape = RoundedCornerShape(4.dp),
+                                color = if (stats.isBreatherWave) Color(0x3300E676) else Color(0x33FF9100),
+                                border = androidx.compose.foundation.BorderStroke(
+                                    0.5.dp,
+                                    if (stats.isBreatherWave) Color(0xFF00E676) else Color(0xFFFF9100)
+                                )
+                            ) {
+                                Text(
+                                    text = if (stats.isBreatherWave) "BREATHER" else "WAVE ${stats.waveIndex}",
+                                    fontSize = 8.5.sp,
+                                    fontWeight = FontWeight.Black,
+                                    color = if (stats.isBreatherWave) Color(0xFF00E676) else Color(0xFFFF9100),
+                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                )
+                            }
                         }
 
                         // Compact Powerup chip if active
@@ -857,7 +891,7 @@ private fun ActivePowerPill(stats: LiveGameStats) {
                     modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                 ) {
                     Icon(
-                        imageVector = Icons.Default.Security,
+                        imageVector = AppIcons.Security,
                         contentDescription = "Shield Active",
                         tint = Color(0xFF00E5FF),
                         modifier = Modifier.size(11.dp)
@@ -883,7 +917,7 @@ private fun ActivePowerPill(stats: LiveGameStats) {
                     modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                 ) {
                     Icon(
-                        imageVector = Icons.Default.Speed,
+                        imageVector = AppIcons.Speed,
                         contentDescription = "Boost Active",
                         tint = Color(0xFF00E676),
                         modifier = Modifier.size(11.dp)
@@ -909,7 +943,7 @@ private fun ActivePowerPill(stats: LiveGameStats) {
                     modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                 ) {
                     Icon(
-                        imageVector = Icons.Default.Stars,
+                        imageVector = AppIcons.Stars,
                         contentDescription = "Multiplier Active",
                         tint = Color(0xFFFFD54F),
                         modifier = Modifier.size(11.dp)
@@ -935,7 +969,7 @@ private fun ActivePowerPill(stats: LiveGameStats) {
                     modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                 ) {
                     Icon(
-                        imageVector = Icons.Default.Bolt,
+                        imageVector = AppIcons.Bolt,
                         contentDescription = "Orbs",
                         tint = Color(0xFFFFD700),
                         modifier = Modifier.size(11.dp)

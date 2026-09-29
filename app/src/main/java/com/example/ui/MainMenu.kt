@@ -171,7 +171,7 @@ fun MainMenu(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Icon(
-                            imageVector = Icons.Default.EmojiEvents,
+                            imageVector = AppIcons.EmojiEvents,
                             contentDescription = "Leaderboard",
                             tint = Color(0xFFFFD54F),
                             modifier = Modifier.size(15.dp)
@@ -200,7 +200,7 @@ fun MainMenu(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Icon(
-                            imageVector = Icons.Default.Stars,
+                            imageVector = AppIcons.Stars,
                             contentDescription = "Credits",
                             tint = Color(0xFF00E5FF),
                             modifier = Modifier.size(15.dp)
@@ -230,7 +230,7 @@ fun MainMenu(
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         Icon(
-                            imageVector = Icons.AutoMirrored.Filled.HelpOutline,
+                            imageVector = AppIcons.HelpOutline,
                             contentDescription = "How to play",
                             tint = Color(0xEEFFFFFF),
                             modifier = Modifier.size(17.dp)
@@ -253,7 +253,7 @@ fun MainMenu(
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         Icon(
-                            imageVector = if (soundOn) Icons.AutoMirrored.Filled.VolumeUp else Icons.AutoMirrored.Filled.VolumeMute,
+                            imageVector = if (soundOn) AppIcons.VolumeUp else AppIcons.VolumeMute,
                             contentDescription = "Toggle sound",
                             tint = if (soundOn) Color(0xFF00E5FF) else Color(0x77FFFFFF),
                             modifier = Modifier.size(17.dp)
@@ -276,7 +276,7 @@ fun MainMenu(
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         Icon(
-                            imageVector = Icons.Default.Vibration,
+                            imageVector = AppIcons.Vibration,
                             contentDescription = "Toggle vibration",
                             tint = if (vibrationOn) Color(0xFF00E676) else Color(0x77FFFFFF),
                             modifier = Modifier.size(17.dp)
@@ -393,7 +393,7 @@ fun MainMenu(
                             modifier = Modifier.padding(vertical = 8.dp)
                         ) {
                             Icon(
-                                imageVector = Icons.Default.Bolt,
+                                imageVector = AppIcons.Bolt,
                                 contentDescription = null,
                                 tint = if (isOverdrive) Color.White else Color(0xFFFF7043),
                                 modifier = Modifier.size(14.dp)
@@ -537,7 +537,7 @@ fun MainMenu(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Icon(
-                                    imageVector = Icons.Default.ShoppingBag,
+                                    imageVector = AppIcons.ShoppingBag,
                                     contentDescription = "Hangar Shop",
                                     tint = Color(0xFF00E5FF),
                                     modifier = Modifier.size(13.dp)
@@ -863,7 +863,7 @@ fun HighScoresDialog(
                 // Header with Trophy
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(
-                        imageVector = Icons.Default.EmojiEvents,
+                        imageVector = AppIcons.EmojiEvents,
                         contentDescription = null,
                         tint = Color(0xFFFFD54F),
                         modifier = Modifier.size(22.dp)
@@ -1170,7 +1170,7 @@ fun CharacterHangarDialog(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Icon(
-                                imageVector = Icons.Default.Stars,
+                                imageVector = AppIcons.Stars,
                                 contentDescription = null,
                                 tint = Color(0xFF00E5FF),
                                 modifier = Modifier.size(14.dp)
@@ -1364,7 +1364,7 @@ fun CharacterHangarDialog(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Icon(
-                                    imageVector = Icons.Default.Security,
+                                    imageVector = AppIcons.Security,
                                     contentDescription = null,
                                     tint = modelAccentColor,
                                     modifier = Modifier.size(20.dp)
@@ -1457,7 +1457,7 @@ fun CharacterHangarDialog(
                                 .height(48.dp)
                                 .testTag("btn_purchase_${selectedModel.id}")
                         ) {
-                            Icon(imageVector = Icons.Default.Stars, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Icon(imageVector = AppIcons.Stars, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
                                 text = "UNLOCK & EQUIP • ${selectedModel.price} PTS",

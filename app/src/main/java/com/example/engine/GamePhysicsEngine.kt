@@ -105,6 +105,14 @@ class GamePhysicsEngine(
     var onBoulderDestroyed: (() -> Unit)? = null
     var onOutOfAmmo: (() -> Unit)? = null
     var onThreatEscalation: ((DynamicThreatLevel) -> Unit)? = null
+    var onHazardWaveSpawned: ((waveIndex: Int, pattern: HazardPattern, interval: Float) -> Unit)? = null
+
+    // Procedural Boulder Generation System (Endless runner wave mechanics & increasing intervals)
+    val boulderGenerator = ProceduralBoulderGenerator(roadHalfWidth = roadHalfWidth)
+    val currentHazardPattern: HazardPattern get() = boulderGenerator.currentPattern
+    val currentSpawnInterval: Float get() = boulderGenerator.currentInterval
+    val waveCount: Int get() = boulderGenerator.waveCount
+    val isBreatherWave: Boolean get() = boulderGenerator.isBreatherActive
 
     // Dynamic Difficulty Adjustment (DDA)
     var currentThreatLevel: DynamicThreatLevel = DynamicDifficultyTiers.TIERS[0]
@@ -134,6 +142,9 @@ class GamePhysicsEngine(
 
     init {
         generateInitialScenery()
+        boulderGenerator.onWaveSpawned = { waveIdx, pattern, interval ->
+            onHazardWaveSpawned?.invoke(waveIdx, pattern, interval)
+        }
     }
 
     private fun generateInitialScenery() {
@@ -223,6 +234,7 @@ class GamePhysicsEngine(
         crashTimer = 0f
         currentThreatLevel = DynamicDifficultyTiers.TIERS[0]
         maxThreatLevelReached = 1
+        boulderGenerator.reset()
         nextSpawnInterval = if (isOverdriveMode) 1.4f else 2.0f
         isRunning = true
         isGameOver = false
@@ -303,7 +315,7 @@ class GamePhysicsEngine(
             particles.update(clampedDt)
             cameraShakeMagnitude = (cameraShakeMagnitude - clampedDt * 3.5f).coerceAtLeast(0f)
             crashTimer += clampedDt
-            if (crashTimer >= 0.85f && isRunning) {
+            if (crashTimer >= 0.35f && isRunning) {
                 isRunning = false
                 onGameOver(score, distanceTraveled.toInt(), ballsDodged, maxComboThisRun, currentSector.name)
             }
@@ -700,12 +712,19 @@ class GamePhysicsEngine(
             }
         }
 
-        // 7. Procedural Ball Spawning
-        spawnTimer += clampedDt
-        if (spawnTimer >= nextSpawnInterval) {
-            spawnTimer = 0f
-            spawnObstacleWave()
+        // 7. Procedural Boulder Generation System (Spawns at increasing intervals & progressive waves)
+        boulderGenerator.update(
+            dt = clampedDt,
+            playerSpeed = player.forwardSpeed,
+            distanceTraveled = distanceTraveled,
+            runDuration = gameTime,
+            threatLevel = currentThreatLevel.level,
+            isOverdrive = isOverdriveMode
+        ) { type, x, z, speed, lateralSpeed ->
+            spawnBall(type, x, z, speed, lateralSpeed)
         }
+        nextSpawnInterval = boulderGenerator.currentInterval
+        spawnTimer = boulderGenerator.timeUntilNextWave
 
         // 8. Update Particles (synchronized with forward road scroll)
         particles.update(clampedDt, forwardDelta)
@@ -863,6 +882,7 @@ class GamePhysicsEngine(
         for (sp in speedPadPool) {
             sp.isActive = false
         }
+        boulderGenerator.pendingBoulders.clear()
     }
 
     private fun spawnSpeedPad() {
@@ -876,81 +896,14 @@ class GamePhysicsEngine(
         }
     }
 
-    private fun spawnObstacleWave() {
-        val dist = distanceTraveled
-        val overdriveFactor = if (isOverdriveMode) 1.25f else 1.0f
-
-        val rawBaseSpeed = when {
-            dist < 60f -> 6.5f + Random.nextFloat() * 1.5f
-            dist < 180f -> 8.5f + Random.nextFloat() * 2.0f
-            dist < 400f -> 10.5f + Random.nextFloat() * 2.5f
-            dist < 800f -> 12.5f + Random.nextFloat() * 3.0f
-            else -> 14.5f + Random.nextFloat() * 3.5f
-        } * overdriveFactor
-
-        // Dynamic Difficulty: boulder speed gradually increases with run duration
-        val baseSpeed = rawBaseSpeed * dynamicSpeedMultiplier
-
-        val rawInterval = when {
-            dist < 60f -> 2.4f + Random.nextFloat() * 0.5f
-            dist < 180f -> 1.9f + Random.nextFloat() * 0.4f
-            dist < 400f -> 1.45f + Random.nextFloat() * 0.35f
-            dist < 800f -> 1.15f + Random.nextFloat() * 0.3f
-            else -> 0.90f + Random.nextFloat() * 0.22f
-        } / (if (isOverdriveMode) 1.25f else 1.0f)
-
-        // Dynamic Difficulty: boulder frequency gradually increases with run duration
-        nextSpawnInterval = (rawInterval / dynamicFrequencyMultiplier).coerceAtLeast(0.48f)
-
-        val spawnZ = -90f - Random.nextFloat() * 15f
-        val roll = Random.nextFloat()
-
-        // As run duration increases, higher threat tiers also increase the mix of high-speed & zigzag hazards
-        val durationBonusRoll = (gameTime / 180.0f * 0.25f).coerceAtMost(0.30f)
-        val adjustedRoll = (roll + durationBonusRoll).coerceAtMost(0.99f)
-
-        val type = when {
-            dist < 50f && gameTime < 20f -> BallType.STRAIGHT
-            dist < 150f && gameTime < 45f -> if (adjustedRoll < 0.50f) BallType.STRAIGHT else if (adjustedRoll < 0.75f) BallType.LEFT_TO_RIGHT else BallType.RIGHT_TO_LEFT
-            dist < 350f || gameTime < 90f -> when {
-                adjustedRoll < 0.28f -> BallType.STRAIGHT
-                adjustedRoll < 0.50f -> BallType.LEFT_TO_RIGHT
-                adjustedRoll < 0.70f -> BallType.RIGHT_TO_LEFT
-                adjustedRoll < 0.88f -> BallType.FAST
-                else -> BallType.BOUNCING
-            }
-            else -> when {
-                adjustedRoll < 0.15f -> BallType.STRAIGHT
-                adjustedRoll < 0.35f -> BallType.LEFT_TO_RIGHT
-                adjustedRoll < 0.55f -> BallType.RIGHT_TO_LEFT
-                adjustedRoll < 0.75f -> BallType.FAST
-                adjustedRoll < 0.90f -> BallType.GIANT
-                else -> BallType.BOUNCING
-            }
-        }
-
-        val lateralSpeed = when (type) {
-            BallType.LEFT_TO_RIGHT -> (Random.nextFloat() * 2.8f + 1.4f) * dynamicSpeedMultiplier.coerceAtMost(1.6f)
-            BallType.RIGHT_TO_LEFT -> -(Random.nextFloat() * 2.8f + 1.4f) * dynamicSpeedMultiplier.coerceAtMost(1.6f)
-            else -> 0f
-        }
-
-        val spawnX = when (type) {
-            BallType.LEFT_TO_RIGHT -> -(roadHalfWidth - 1.8f)
-            BallType.RIGHT_TO_LEFT -> (roadHalfWidth - 1.8f)
-            BallType.GIANT -> (Random.nextFloat() - 0.5f) * (roadHalfWidth * 0.7f)
-            else -> (Random.nextFloat() - 0.5f) * (roadHalfWidth * 1.5f)
-        }
-
-        spawnBall(type, spawnX, spawnZ, baseSpeed, lateralSpeed)
-
-        // Dynamic twin hazard waves in higher difficulty (scales with distance AND run duration)
-        val durationTwinBonus = (gameTime / 120.0f * 0.20f).coerceAtMost(0.25f)
-        val twinChance = ((if (isOverdriveMode) 0.50f else 0.30f) + durationTwinBonus).coerceAtMost(0.70f)
-        if ((dist > 220f || gameTime > 40f) && Random.nextFloat() < twinChance) {
-            val otherX = if (spawnX < 0) spawnX + 5.2f else spawnX - 5.2f
-            spawnBall(BallType.STRAIGHT, otherX, spawnZ - 12f, baseSpeed * 0.95f, 0f)
-        }
+    fun spawnObstacleWave() {
+        boulderGenerator.generateNextWave(
+            playerSpeed = player.forwardSpeed,
+            distanceTraveled = distanceTraveled,
+            runDuration = gameTime,
+            threatLevel = currentThreatLevel.level,
+            isOverdrive = isOverdriveMode
+        )
     }
 
     fun spawnBall(
