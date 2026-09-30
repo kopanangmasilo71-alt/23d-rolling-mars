@@ -164,7 +164,10 @@ fun MainMenu(
                     color = Color(0x28FFD54F),
                     border = androidx.compose.foundation.BorderStroke(1.dp, Color(0x66FFD54F)),
                     modifier = Modifier
-                        .clickable { showHighScores = true }
+                        .clickable {
+                            viewModel.playMenuClick()
+                            showHighScores = true
+                        }
                         .testTag("btn_show_records")
                 ) {
                     Row(
@@ -193,7 +196,10 @@ fun MainMenu(
                     color = Color(0x2800E5FF),
                     border = androidx.compose.foundation.BorderStroke(1.dp, Color(0x6600E5FF)),
                     modifier = Modifier
-                        .clickable { showCharacterHangar = true }
+                        .clickable {
+                            viewModel.playMenuSelect()
+                            showCharacterHangar = true
+                        }
                         .testTag("btn_wallet_hangar")
                 ) {
                     Row(
@@ -226,7 +232,10 @@ fun MainMenu(
                     border = androidx.compose.foundation.BorderStroke(1.dp, Color(0x33FFFFFF)),
                     modifier = Modifier
                         .size(38.dp)
-                        .clickable { showHowToPlay = true }
+                        .clickable {
+                            viewModel.playMenuClick()
+                            showHowToPlay = true
+                        }
                         .testTag("btn_how_to_play")
                 ) {
                     Box(contentAlignment = Alignment.Center) {
@@ -503,7 +512,10 @@ fun MainMenu(
                 border = androidx.compose.foundation.BorderStroke(1.dp, modelAccentColor.copy(alpha = 0.5f)),
                 modifier = Modifier
                     .fillMaxWidth(0.94f)
-                    .clickable { showCharacterHangar = true }
+                    .clickable {
+                        viewModel.playMenuSelect()
+                        showCharacterHangar = true
+                    }
                     .testTag("card_pilot_hangar")
             ) {
                 Column(
@@ -765,13 +777,19 @@ fun MainMenu(
     if (showCharacterHangar) {
         CharacterHangarDialog(
             viewModel = viewModel,
-            onDismiss = { showCharacterHangar = false }
+            onDismiss = {
+                viewModel.playMenuBack()
+                showCharacterHangar = false
+            }
         )
     }
 
     // HOW TO PLAY MODAL
     if (showHowToPlay) {
-        Dialog(onDismissRequest = { showHowToPlay = false }) {
+        Dialog(onDismissRequest = {
+            viewModel.playMenuBack()
+            showHowToPlay = false
+        }) {
             Card(
                 shape = RoundedCornerShape(24.dp),
                 colors = CardDefaults.cardColors(containerColor = Color(0xFF10172D)),
@@ -813,7 +831,10 @@ fun MainMenu(
                     Spacer(modifier = Modifier.height(20.dp))
 
                     Button(
-                        onClick = { showHowToPlay = false },
+                        onClick = {
+                            viewModel.playMenuClick()
+                            showHowToPlay = false
+                        },
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00E5FF)),
                         shape = RoundedCornerShape(12.dp),
                         modifier = Modifier.fillMaxWidth()
@@ -829,7 +850,10 @@ fun MainMenu(
     if (showHighScores) {
         HighScoresDialog(
             viewModel = viewModel,
-            onDismiss = { showHighScores = false }
+            onDismiss = {
+                viewModel.playMenuBack()
+                showHighScores = false
+            }
         )
     }
 }

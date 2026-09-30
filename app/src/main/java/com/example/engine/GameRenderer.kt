@@ -91,6 +91,7 @@ class GameRenderer(val physics: GamePhysicsEngine) : GLSurfaceView.Renderer {
     private lateinit var wedgeMesh: Mesh
     private lateinit var magmaBoulderMesh: Mesh
     private lateinit var energyOrbMesh: Mesh
+    private lateinit var coneMesh: Mesh
 
     // Ball Meshes
     private lateinit var straightBallMesh: Mesh
@@ -359,6 +360,7 @@ class GameRenderer(val physics: GamePhysicsEngine) : GLSurfaceView.Renderer {
             )
             magmaBoulderMesh = Primitives.createMagmaBoulderMesh(radius = 1.0f)
             energyOrbMesh = Primitives.createEnergyOrbMesh(radius = 0.60f)
+            coneMesh = Primitives.createTrafficCone(baseRadius = 0.32f, height = 0.72f, segments = 12)
 
             // Dynamic Sphere Obstacle Meshes
             straightBallMesh = Primitives.createRollingSphere(
@@ -562,6 +564,9 @@ class GameRenderer(val physics: GamePhysicsEngine) : GLSurfaceView.Renderer {
 
             // 3b. Floating Collectible Power-Ups (Shields, Hyper Boosts, 2X Multipliers, Energy Cores)
             renderCollectibles()
+
+            // 3c. Road Deflection Traffic Cones (Unpredictable bouncing obstacles)
+            renderRoadCones()
 
             // 4. Roadside Scenery (Cyber Pylons, Trees, Crystals, Pyramids, Rocks)
             renderScenery()
@@ -988,6 +993,34 @@ class GameRenderer(val physics: GamePhysicsEngine) : GLSurfaceView.Renderer {
             val shadowPulse = (0.75f - (col.position.y - 0.85f) * 0.4f).coerceIn(0.4f, 0.9f)
             matrixStack.scale(shadowPulse, 0.01f, shadowPulse)
             drawMesh(cubeMesh, floatArrayOf(0.02f, 0.03f, 0.06f, 0.50f))
+            matrixStack.pop()
+        }
+    }
+
+    private fun renderRoadCones() {
+        val camZ = physics.cameraPos.z
+        for (cone in physics.conePool) {
+            if (!cone.isActive || cone.position.z > camZ + 12f || cone.position.z < camZ - 105f) continue
+            matrixStack.push()
+            matrixStack.translate(cone.position.x, cone.position.y, cone.position.z)
+
+            // Dynamic elastic rubber wobble or tumbling airborne rotations
+            if (cone.wobbleAngleX != 0f || cone.wobbleAngleZ != 0f) {
+                matrixStack.rotate(cone.wobbleAngleX, 1f, 0f, 0f)
+                matrixStack.rotate(cone.wobbleAngleZ, 0f, 0f, 1f)
+            }
+
+            drawMesh(coneMesh)
+
+            // Soft shadow under grounded cone
+            if (!cone.isLaunched && cone.position.y <= 0.05f) {
+                matrixStack.push()
+                matrixStack.translate(0f, 0.015f, 0f)
+                matrixStack.scale(0.55f, 0.01f, 0.55f)
+                drawMesh(cubeMesh, SHADOW_COLOR)
+                matrixStack.pop()
+            }
+
             matrixStack.pop()
         }
     }

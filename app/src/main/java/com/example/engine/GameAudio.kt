@@ -19,6 +19,12 @@ import kotlin.random.Random
  */
 class GameAudio {
     var isEnabled: Boolean = true
+        set(value) {
+            field = value
+            soundManager?.isEnabled = value
+        }
+
+    var soundManager: com.example.audio.SoundManager? = null
     private val exceptionHandler = CoroutineExceptionHandler { _, _ -> }
     private val scope = CoroutineScope(Dispatchers.Default + exceptionHandler)
 
@@ -73,6 +79,12 @@ class GameAudio {
     }
 
     fun playJump() {
+        if (!isEnabled) return
+        val sm = soundManager
+        if (sm != null) {
+            sm.playJump()
+            return
+        }
         val durationMs = 200
         val numSamples = (sampleRate * durationMs) / 1000
         val samples = ShortArray(numSamples)
@@ -117,6 +129,12 @@ class GameAudio {
     }
 
     fun playCrash() {
+        if (!isEnabled) return
+        val sm = soundManager
+        if (sm != null) {
+            sm.playBoulderCollision()
+            return
+        }
         val durationMs = 450
         val numSamples = (sampleRate * durationMs) / 1000
         val samples = ShortArray(numSamples)
@@ -256,6 +274,12 @@ class GameAudio {
     }
 
     fun playBoulderExplode() {
+        if (!isEnabled) return
+        val sm = soundManager
+        if (sm != null) {
+            sm.playBoulderExplode()
+            return
+        }
         val durationMs = 280
         val numSamples = (sampleRate * durationMs) / 1000
         val samples = ShortArray(numSamples)
@@ -271,6 +295,30 @@ class GameAudio {
             samples[i] = (sample.coerceIn(-1.0, 1.0) * Short.MAX_VALUE).toInt().toShort()
         }
         playPcm(samples)
+    }
+
+    /**
+     * Tactile UI button click sound via MediaPlayer SoundManager.
+     */
+    fun playMenuClick() {
+        if (!isEnabled) return
+        soundManager?.playMenuClick()
+    }
+
+    /**
+     * Resonant confirmation chime for menu selections, starts, and upgrades.
+     */
+    fun playMenuSelect() {
+        if (!isEnabled) return
+        soundManager?.playMenuSelect()
+    }
+
+    /**
+     * Soft downward tone for navigating back or closing menus.
+     */
+    fun playMenuBack() {
+        if (!isEnabled) return
+        soundManager?.playMenuBack()
     }
 
     fun playDryFire() {

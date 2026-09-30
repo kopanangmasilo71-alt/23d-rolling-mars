@@ -306,6 +306,11 @@ class RollingBall(val id: Int) {
     var trailDustTimer: Float = 0f
     var wasInAir: Boolean = false
     var curbCooldownTimer: Float = 0f
+    var coneCooldownTimer: Float = 0f
+    var curveTimeRemaining: Float = 0f
+    var curveRate: Float = 0f
+    var deflectionCount: Int = 0
+    var baseAssignedSpeed: Float = 0f
 
     // Color palette for this ball
     var colorA = floatArrayOf(0.95f, 0.25f, 0.2f, 1f)
@@ -322,7 +327,8 @@ class RollingBall(val id: Int) {
         isActive = true
         radius = type.radius
         position.set(spawnX, radius, spawnZ)
-        forwardVelocity = baseSpeed * type.baseSpeedMult
+        baseAssignedSpeed = baseSpeed * type.baseSpeedMult
+        forwardVelocity = baseAssignedSpeed
         horizontalVelocity = lateralSpeed
         rollAngleX = 0f
         rollAngleZ = 0f
@@ -332,6 +338,10 @@ class RollingBall(val id: Int) {
         trailDustTimer = 0.06f
         wasInAir = false
         curbCooldownTimer = 0f
+        coneCooldownTimer = 0f
+        curveTimeRemaining = 0f
+        curveRate = 0f
+        deflectionCount = 0
 
         when (type) {
             BallType.STRAIGHT -> {
@@ -363,6 +373,17 @@ class RollingBall(val id: Int) {
 
     fun update(dt: Float) {
         if (!isActive) return
+
+        if (coneCooldownTimer > 0f) {
+            coneCooldownTimer -= dt
+        }
+
+        // Apply post-deflection dynamic curving trajectory
+        if (curveTimeRemaining > 0f) {
+            curveTimeRemaining -= dt
+            horizontalVelocity += curveRate * dt
+            horizontalVelocity = horizontalVelocity.coerceIn(-8.5f, 8.5f)
+        }
 
         // Move along Z toward positive Z (where player is located around Z=0)
         position.z += forwardVelocity * dt
@@ -1000,18 +1021,18 @@ class PlayerCharacter {
             nearMissTilt += (0f - nearMissTilt) * (8f * dt).coerceAtMost(1f)
         }
 
-        // Realistic Step & Biomechanical Animation Synchronized with Exact Road Movement
-        // Natural athletic running cadence (~1.1 Hz cycle, ~133 steps/minute)
-        // Eliminates frantic cartoon leg-spinning while maintaining crisp, heroic motion
-        val baseCadence = 7.0f
-        val speedRatio = (effectiveForwardSpeed / baseNormalSpeed).coerceIn(0.5f, 2.0f)
-        val angularStrideRate = baseCadence * (0.88f + 0.12f * speedRatio)
+        // Biomechanically Synchronized Locomotion Locked to Exact Ground Speed
+        // Angular stride cadence scales directly with ground speed ratio:
+        // Baseline cruise (~10 m/s) matches natural ~7.0 rad/s cadence (~1.12 Hz, ~2.2 steps/sec)
+        // High speed sprints scale cadence up dynamically, while low speed braking scales cadence down
+        val speedRatio = (effectiveForwardSpeed / baseNormalSpeed).coerceIn(0.25f, 2.5f)
+        val angularStrideRate = 7.0f * speedRatio
         runAnimationTime += dt * angularStrideRate
 
-        // Detect footstep plants for synchronized dust puffs and tactile feel
+        // Step index progression for footstep dust and ground impact synchronization
         justStepped = false
         if (isGrounded) {
-            val currentStepIndex = (runAnimationTime / Math.PI.toFloat()).toInt()
+            val currentStepIndex = (runAnimationTime / PI.toFloat()).toInt()
             if (currentStepIndex != lastStepIndex) {
                 lastStepIndex = currentStepIndex
                 justStepped = true
@@ -1020,32 +1041,45 @@ class PlayerCharacter {
         }
 
         val strideSin = sin(runAnimationTime)
+        val strideCos = cos(runAnimationTime)
 
         if (isGrounded) {
-            // Fluid, athletic running stride: leg swing amplitude opens gracefully with speed
-            val strideAmplitude = 24f + (speedRatio - 1f).coerceIn(-0.2f, 0.8f) * 5.0f
+            // Athletic stride amplitude scales dynamically with sprinting speed
+            // Low speed (braking): gentle 20-degree jog
+            // High speed (sprint): wide 30-degree athletic extension
+            val strideAmplitude = (26f + 8f * (speedRatio - 1f)).coerceIn(16f, 32f)
             limbSwingAngle = strideSin * strideAmplitude
             thighSwingLeft = strideSin * strideAmplitude
             thighSwingRight = -thighSwingLeft
 
-            // Natural, graceful Knee Flexion: knee bends on recovery swing
-            kneeBendLeft = if (thighSwingLeft > 0f) (thighSwingLeft * 1.25f).coerceIn(4f, 50f) else 4f
-            kneeBendRight = if (thighSwingRight > 0f) (thighSwingRight * 1.25f).coerceIn(4f, 50f) else 4f
+            // Biomechanical Knee Joint Flexion (IK Response):
+            // Recovery Swing (thigh forward > 0): knee flexes backwards to lift the foot cleanly
+            // Stance / Push-off Phase (thigh backward <= 0): knee extends firmly with slight athletic cushion
+            kneeBendLeft = if (thighSwingLeft > 0f) {
+                (thighSwingLeft * 1.35f + 4f).coerceIn(4f, 50f)
+            } else {
+                (4f + abs(thighSwingLeft) * 0.16f).coerceIn(4f, 16f)
+            }
+            kneeBendRight = if (thighSwingRight > 0f) {
+                (thighSwingRight * 1.35f + 4f).coerceIn(4f, 50f)
+            } else {
+                (4f + abs(thighSwingRight) * 0.16f).coerceIn(4f, 16f)
+            }
 
-            // Smooth arm swing counter-balances legs comfortably
+            // Arm swing counter-balances the legs in exact anti-phase
             armSwingLeft = -thighSwingLeft * 0.70f
             armSwingRight = -armSwingLeft
 
-            // Controlled forearms posture with relaxed athletic bend
-            elbowBendLeft = 70f + strideSin * 6f
-            elbowBendRight = 70f - strideSin * 6f
+            // Dynamic forearm posture: elbow pumps rhythmically with running cadence
+            elbowBendLeft = (68f + strideSin * 10f).coerceIn(52f, 86f)
+            elbowBendRight = (68f - strideSin * 10f).coerceIn(52f, 86f)
 
-            // Subtle athletic torso twist instead of wild swaying
-            torsoTwist = -strideSin * 2.8f
+            // Subtle athletic shoulder/torso counter-twist
+            torsoTwist = -strideSin * (2.4f + speedRatio * 0.6f).coerceIn(1.8f, 4.2f)
 
-            // Gentle, grounded vertical body bounce (subtle micro-bobbing synchronized with steps)
-            val bobAmplitude = 0.016f + (speedRatio - 1f).coerceIn(0f, 0.8f) * 0.006f
-            val verticalStrideBounce = -cos(runAnimationTime * 2f) * bobAmplitude
+            // Dynamic Center of Mass vertical bobbing (rises during flight, dips into stance foot strikes)
+            val bobAmplitude = (0.016f + 0.005f * (speedRatio - 1f)).coerceIn(0.010f, 0.025f)
+            val verticalStrideBounce = -abs(strideCos) * bobAmplitude
             bodyBobOffset = verticalStrideBounce - landingSquash * 0.20f
         } else {
             // Mid-air Jump Pose (Athletic hurdle tuck & reach)
@@ -1583,36 +1617,56 @@ class ParticleSystem(val maxParticles: Int = 750) {
         }
     }
 
-    fun emitConeImpact(origin: Vector3, normalX: Float) {
-        // High-energy orange & white plastic shards
+    fun emitConeImpact(origin: Vector3, normalX: Float, ballAccentColor: FloatArray? = null) {
+        // 1. Expanding ground shockwave ring in vibrant safety amber/orange
+        emitShockwave(Vector3(origin.x, 0.04f, origin.z), 16, floatArrayOf(1.0f, 0.45f, 0.05f, 0.85f))
+
+        // 2. High-energy fluorescent safety orange & reflective white plastic shards
         var emittedShards = 0
         for (p in particles) {
             if (p.lifetime <= 0f) {
                 p.particleType = ParticleType.ROCK_DEBRIS
-                val ang = (kotlin.random.Random.nextFloat() - 0.5f) * 2.2f + (if (normalX >= 0) 0f else PI.toFloat())
-                val speed = kotlin.random.Random.nextFloat() * 7f + 4.5f
-                p.position.set(origin.x, origin.y + 0.35f, origin.z)
-                p.velocity.set(kotlin.math.cos(ang) * speed, kotlin.random.Random.nextFloat() * 4.5f + 2.5f, kotlin.math.sin(ang) * speed + 3f)
-                p.lifetime = 0.55f
-                p.maxLife = 0.55f
-                p.size = 0.12f
+                val ang = (kotlin.random.Random.nextFloat() - 0.5f) * 2.4f + (if (normalX >= 0) 0f else PI.toFloat())
+                val speed = kotlin.random.Random.nextFloat() * 7.5f + 4.5f
+                p.position.set(origin.x, origin.y + 0.32f, origin.z)
+                p.velocity.set(
+                    kotlin.math.cos(ang) * speed,
+                    kotlin.random.Random.nextFloat() * 4.8f + 2.5f,
+                    kotlin.math.sin(ang) * speed + 3.0f
+                )
+                p.lifetime = 0.65f
+                p.maxLife = 0.65f
+                p.size = 0.13f + kotlin.random.Random.nextFloat() * 0.06f
                 p.rotation = kotlin.random.Random.nextFloat() * 360f
-                p.rotSpeed = (kotlin.random.Random.nextFloat() - 0.5f) * 600f
-                if (emittedShards % 3 == 0) {
-                    // White reflective stripe shard
-                    p.color[0] = 0.96f; p.color[1] = 0.96f; p.color[2] = 0.98f; p.color[3] = 1f
-                } else {
-                    // Fluorescent safety orange shard
-                    p.color[0] = 1.0f; p.color[1] = 0.40f; p.color[2] = 0.02f; p.color[3] = 1f
+                p.rotSpeed = (kotlin.random.Random.nextFloat() - 0.5f) * 700f
+                when {
+                    emittedShards % 3 == 0 -> {
+                        // White reflective stripe shard
+                        p.color[0] = 0.98f; p.color[1] = 0.98f; p.color[2] = 1.0f; p.color[3] = 1f
+                    }
+                    emittedShards % 3 == 1 -> {
+                        // Fluorescent safety orange shard
+                        p.color[0] = 1.0f; p.color[1] = 0.42f; p.color[2] = 0.02f; p.color[3] = 1f
+                    }
+                    else -> {
+                        // Dark weighted rubber base fragment or ball accent
+                        if (ballAccentColor != null) {
+                            p.color[0] = ballAccentColor[0]; p.color[1] = ballAccentColor[1]; p.color[2] = ballAccentColor[2]; p.color[3] = 1f
+                        } else {
+                            p.color[0] = 0.15f; p.color[1] = 0.15f; p.color[2] = 0.18f; p.color[3] = 1f
+                        }
+                    }
                 }
                 emittedShards++
-                if (emittedShards >= 10) break
+                if (emittedShards >= 14) break
             }
         }
-        // Friction spark burst
-        emitBurst(Vector3(origin.x, origin.y + 0.3f, origin.z), 12, floatArrayOf(1.0f, 0.75f, 0.1f))
-        // Road dust puff
-        emitDust(Vector3(origin.x, 0.05f, origin.z), 6)
+
+        // 3. Kinetic friction spark burst
+        emitBurst(Vector3(origin.x, origin.y + 0.28f, origin.z), 18, floatArrayOf(1.0f, 0.80f, 0.15f))
+
+        // 4. Low billowing asphalt road dust puff
+        emitDust(Vector3(origin.x, 0.05f, origin.z), 8)
     }
 
     fun update(dt: Float, worldScrollZ: Float = 0f) {

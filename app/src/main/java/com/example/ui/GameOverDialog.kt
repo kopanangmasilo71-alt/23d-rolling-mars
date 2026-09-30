@@ -262,7 +262,10 @@ fun GameOverOverlay(
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     OutlinedButton(
-                        onClick = { showHighScoresModal = true },
+                        onClick = {
+                            viewModel.playMenuClick()
+                            showHighScoresModal = true
+                        },
                         shape = RoundedCornerShape(14.dp),
                         border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF78909C)),
                         colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
@@ -414,7 +417,10 @@ fun PauseOverlay(
 
                 // 3. SETTINGS Button (Sleek Slate Blue)
                 Button(
-                    onClick = { showSettingsModal = !showSettingsModal },
+                    onClick = {
+                        viewModel.playMenuClick()
+                        showSettingsModal = !showSettingsModal
+                    },
                     colors = ButtonDefaults.buttonColors(
                         containerColor = Color(0xFF455A64),
                         contentColor = Color.White

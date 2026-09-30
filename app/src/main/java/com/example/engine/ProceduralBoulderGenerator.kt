@@ -269,9 +269,12 @@ class ProceduralBoulderGenerator(
         currentInterval = calculateNextInterval(cycleIndex, selectedPattern, playerSpeed, threatLevel, isOverdrive)
         timeUntilNextWave = currentInterval
 
-        // Base forward speed for oncoming boulders, scaling with player speed and threat
-        val speedMultiplier = 1.0f + (threatLevel - 1) * 0.12f + (if (isOverdrive) 0.20f else 0.0f)
-        val baseBoulderSpeed = (playerSpeed * 0.70f + 3.5f) * speedMultiplier
+        // Base forward speed for oncoming boulders, scaling gradually with distance traveled, survival time, and threat
+        val distanceProgressionBonus = (distanceTraveled / 2400f) * 0.50f
+        val durationProgressionBonus = (runDuration / 180f) * 0.40f
+        val speedMultiplier = (1.0f + (threatLevel - 1) * 0.10f + distanceProgressionBonus + durationProgressionBonus + (if (isOverdrive) 0.25f else 0.0f))
+            .coerceIn(1.0f, 2.50f)
+        val baseBoulderSpeed = (playerSpeed * 0.72f + 3.8f) * speedMultiplier
 
         val spawnZ = -88f - random.nextFloat() * 12f
 

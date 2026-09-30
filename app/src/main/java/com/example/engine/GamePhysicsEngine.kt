@@ -16,6 +16,7 @@ class GamePhysicsEngine(
     val ballPool = Array(32) { RollingBall(it) }
     val speedPadPool = Array(6) { SpeedPad(it) }
     val collectiblePool = Array(12) { CollectibleItem(it) }
+    val conePool = Array(16) { RoadCone(it) }
 
     // Road segments: 10 segments of 30 meters = 300m road view
     // Start from +60m so the road extends well behind the camera (cam at z=7m)
@@ -152,19 +153,33 @@ class GamePhysicsEngine(
     val runDurationSeconds: Int
         get() = gameTime.toInt()
 
-    // Gradual continuous speed scaling with run duration (+32% per 60s survived, capped at 2.15x)
+    // Gradual continuous boulder speed scaling combining distance traveled, survival time, sector, and threat level
     val dynamicSpeedMultiplier: Float
-        get() = (1.0f + (gameTime / 60.0f) * 0.32f).coerceAtMost(2.15f)
+        get() {
+            val distanceFactor = (distanceTraveled / 2400f) * 0.50f
+            val timeFactor = (gameTime / 180f) * 0.40f
+            val sectorFactor = (currentSector.speedMultiplier - 1.0f) * 0.65f
+            val threatFactor = (currentThreatLevel.level - 1) * 0.10f
+            val overdriveFactor = if (isOverdriveMode) 0.25f else 0.0f
+            return (1.0f + distanceFactor + timeFactor + sectorFactor + threatFactor + overdriveFactor)
+                .coerceIn(1.0f, 2.50f)
+        }
 
-    // Gradual continuous frequency scaling with run duration (+38% per 60s survived, capped at 2.25x)
+    // Gradual continuous hazard frequency scaling with distance and run duration
     val dynamicFrequencyMultiplier: Float
-        get() = (1.0f + (gameTime / 60.0f) * 0.38f).coerceAtMost(2.25f)
+        get() {
+            val distanceFactor = (distanceTraveled / 2400f) * 0.45f
+            val timeFactor = (gameTime / 180f) * 0.35f
+            val threatFactor = (currentThreatLevel.level - 1) * 0.12f
+            return (1.0f + distanceFactor + timeFactor + threatFactor).coerceIn(1.0f, 2.40f)
+        }
 
     // Spawning control
     private var spawnTimer: Float = 0f
     private var nextSpawnInterval: Float = 2.0f
     private var speedPadTimer: Float = 0f
     private var collectibleTimer: Float = 0f
+    private var coneSpawnTimer: Float = 0f
     private var gameTime: Float = 0f
     private var crashTimer: Float = 0f
 
@@ -272,6 +287,10 @@ class GamePhysicsEngine(
         spawnTimer = 0f
         speedPadTimer = 0f
         collectibleTimer = 0f
+        coneSpawnTimer = 0f
+        for (c in conePool) {
+            c.isActive = false
+        }
         crashTimer = 0f
         currentThreatLevel = DynamicDifficultyTiers.TIERS[0]
         maxThreatLevelReached = 1
@@ -285,6 +304,12 @@ class GamePhysicsEngine(
         spawnBall(BallType.STRAIGHT, x = 0f, z = -32f, speed = initSpeed, lateralSpeed = 0f)
         spawnBall(BallType.LEFT_TO_RIGHT, x = -(roadHalfWidth - 2.0f), z = -56f, speed = initSpeed * 1.05f, lateralSpeed = 2.2f)
         spawnBall(BallType.STRAIGHT, x = 2.4f, z = -80f, speed = initSpeed * 1.1f, lateralSpeed = 0f)
+
+        // Spawn initial tactical traffic cones on the road!
+        // Placed strategically in lanes so oncoming rolling boulders collide and deflect dynamically
+        spawnCone(x = 0.5f, z = -20f)
+        spawnCone(x = -1.8f, z = -44f)
+        spawnCone(x = 1.9f, z = -68f)
 
         // Spawn initial golden Energy Orb & Shield in lanes!
         spawnCollectibleAt(CollectibleType.ENERGY_ORB, x = 0f, z = -18f)
@@ -664,15 +689,79 @@ class GamePhysicsEngine(
                     }
                 }
 
+                // Check collision with cones
+                for (cone in conePool) {
+                    if (cone.isActive && !cone.isLaunched) {
+                        val cdx = proj.position.x - cone.position.x
+                        val cdz = proj.position.z - cone.position.z
+                        if (cdx * cdx + cdz * cdz < (cone.radius + proj.radius) * (cone.radius + proj.radius)) {
+                            proj.isActive = false
+                            cone.onStruck(2.5f, 22f)
+                            audio.playConeHit()
+                            particles.emitConeImpact(cone.position, 1f)
+                            break
+                        }
+                    }
+                }
+
                 if (proj.position.z < -65f) {
                     proj.isActive = false
                 }
             }
         }
 
+        // 5c. Update Road Traffic Cones (Deflection obstacles that scroll with road)
+        for (cone in conePool) {
+            if (cone.isActive) {
+                cone.position.z += forwardDelta
+                cone.update(clampedDt)
+
+                // Player interaction with traffic cone (kicking/nudging cone with elastic wobble)
+                if (!cone.isLaunched && cone.hitCooldownTimer <= 0f) {
+                    val pDx = abs(player.position.x - cone.position.x)
+                    val pDz = abs(player.position.z - cone.position.z)
+                    if (pDx < 0.65f && pDz < 0.70f && player.position.y < 0.75f) {
+                        val kickDir = if (player.horizontalVelocity != 0f) player.horizontalVelocity else (if (player.position.x < cone.position.x) 2.2f else -2.2f)
+                        cone.onStruck(kickDir, player.forwardSpeed + 4f)
+                        audio.playConeHit()
+                        particles.emitConeImpact(cone.position, kickDir)
+                        player.addStyle(15f)
+                    }
+                }
+
+                if (cone.position.z > 22f) {
+                    cone.isActive = false
+                }
+            }
+        }
+
+        // 5d. Procedural Traffic Cone Spawning (Frequency dynamically scales with run duration & threat level)
+        coneSpawnTimer += clampedDt
+        val coneSpawnInterval = when {
+            gameTime < 15f -> 4.2f // Early game: steady introduction so cones are always visible on the road
+            gameTime < 45f -> 3.2f // Mid game: steady hazard presence
+            gameTime < 90f -> 2.4f // Escalated challenge
+            else -> 1.8f // High-density obstacle course
+        } / (if (isOverdriveMode) 1.25f else 1.0f)
+
+        if (coneSpawnTimer >= coneSpawnInterval) {
+            coneSpawnTimer = 0f
+            spawnRoadConeWave()
+        }
+
         // 6. Update Rolling Boulders
+        val currentSpeedMultiplier = dynamicSpeedMultiplier
         for (ball in ballPool) {
             if (ball.isActive) {
+                // Continuous rolling acceleration & progression scaling:
+                // As the player travels further and survives longer, boulders speed up dynamically
+                val targetProgressionSpeed = ball.baseAssignedSpeed * currentSpeedMultiplier
+                if (ball.forwardVelocity < targetProgressionSpeed) {
+                    ball.forwardVelocity += (targetProgressionSpeed - ball.forwardVelocity) * (1.2f * clampedDt).coerceAtMost(1f)
+                }
+                // Subtle downhill rolling momentum acceleration
+                ball.forwardVelocity += (0.22f * currentSpeedMultiplier) * clampedDt
+
                 ball.update(clampedDt)
                 ball.position.z += forwardDelta
 
@@ -725,6 +814,77 @@ class GamePhysicsEngine(
                         if (abs(ball.position.z - player.position.z) < 20f) {
                             cameraShakeMagnitude = (cameraShakeMagnitude + 0.16f).coerceAtMost(0.65f)
                         }
+                    }
+                }
+
+                // 6d. Road Traffic Cone Collision Detection & Dynamic Unpredictable Deflection
+                for (cone in conePool) {
+                    if (!cone.isActive || cone.hitCooldownTimer > 0f || ball.coneCooldownTimer > 0f) continue
+                    val cdx = ball.position.x - cone.position.x
+                    val cdz = ball.position.z - cone.position.z
+                    val collisionRadius = ball.radius + cone.radius
+                    if ((cdx * cdx + cdz * cdz) < (collisionRadius * collisionRadius)) {
+                        val dist = kotlin.math.sqrt(cdx * cdx + cdz * cdz).coerceAtLeast(0.001f)
+                        val normalX = cdx / dist
+                        val normalZ = cdz / dist
+
+                        // Positional separation to prevent overlapping/sticking
+                        val overlap = collisionRadius - dist
+                        if (overlap > 0f) {
+                            ball.position.x += normalX * (overlap + 0.04f)
+                            ball.position.z += normalZ * (overlap + 0.04f)
+                        }
+
+                        // Unpredictability scaling with run progression (gameTime & dynamic threat tier)
+                        // Early game: predictable gentle deflection away from the obstacle
+                        // As time advances: chaotic ricochets, snake curving trajectories, and unpredictable lane switching!
+                        val timeFactor = (gameTime / 45f).coerceIn(0f, 1f)
+                        val threatBonus = (currentThreatLevel.level - 1) * 0.18f
+                        val chaosFactor = (timeFactor + threatBonus).coerceIn(0.12f, 1.6f)
+
+                        // Direction: deflect away from the cone center with dynamic angular jitter that grows with time
+                        val baseDir = if (normalX >= 0f) 1f else -1f
+                        val baseKick = 2.2f + 1.8f * chaosFactor
+                        val randomVariance = (Random.nextFloat() * 1.6f + 0.4f) * chaosFactor
+                        val deflectionKick = (baseKick + randomVariance) * baseDir
+
+                        // Lateral impulse: reverse or deflect lateral velocity with chaotic variance
+                        ball.horizontalVelocity = (ball.horizontalVelocity * (-0.35f - 0.25f * chaosFactor) + deflectionKick)
+                            .coerceIn(-8.0f, 8.0f)
+                        if (kotlin.math.abs(ball.horizontalVelocity) < 1.6f) {
+                            ball.horizontalVelocity = (if (Random.nextBoolean()) 2.4f else -2.4f) * (1f + 0.25f * chaosFactor)
+                        }
+
+                        // Impart continuous curving trajectory post-collision (emergent unpredictability over time)
+                        ball.curveTimeRemaining = 0.6f + 0.8f * chaosFactor
+                        ball.curveRate = (Random.nextFloat() - 0.5f) * 4.8f * chaosFactor
+                        ball.deflectionCount++
+
+                        // Forward speed dynamic transfer: impact alters roll speed (+/- 14% to 26%)
+                        val speedScale = 1.0f + (Random.nextFloat() - 0.5f) * (0.16f + 0.18f * chaosFactor)
+                        ball.forwardVelocity = (ball.forwardVelocity * speedScale).coerceIn(5.5f, 25.0f)
+
+                        // Strike the cone: rubber wobble oscillation or airborne tumble launch
+                        cone.onStruck(
+                            impactDirX = -normalX * 3.5f + (Random.nextFloat() - 0.5f) * 2.2f,
+                            impactSpeed = ball.forwardVelocity
+                        )
+
+                        // Debounce timers to prevent multi-frame overlapping
+                        cone.hitCooldownTimer = 0.22f
+                        ball.coneCooldownTimer = 0.22f
+
+                        // Audio sound effect
+                        audio.playConeHit()
+
+                        // Fluorescent safety orange shards, white reflective stripe fragments, sparks & dust
+                        particles.emitConeImpact(cone.position, normalX, ball.colorA)
+
+                        // Screen vibration & camera shake if near player
+                        if (abs(ball.position.z - player.position.z) < 24f) {
+                            cameraShakeMagnitude = (cameraShakeMagnitude + 0.18f).coerceAtMost(0.65f)
+                        }
+                        break
                     }
                 }
 
@@ -970,6 +1130,51 @@ class GamePhysicsEngine(
         spawnCollectibleAt(type, spawnX, spawnZ)
     }
 
+    fun spawnRoadConeWave() {
+        // Spawn 1 to 3 small traffic cones in strategic lane positions
+        // Cone density increases over time as run duration increases
+        val count = when {
+            gameTime < 25f -> if (Random.nextFloat() < 0.40f) 2 else 1
+            gameTime < 70f -> if (Random.nextFloat() < 0.70f) 2 else 1
+            else -> if (Random.nextFloat() < 0.45f) 3 else 2
+        }
+        val spawnZ = -55f - Random.nextFloat() * 28f
+        val usedX = mutableListOf<Float>()
+
+        for (i in 0 until count) {
+            for (cone in conePool) {
+                if (!cone.isActive) {
+                    var x: Float
+                    var attempts = 0
+                    do {
+                        val laneChoice = Random.nextInt(4)
+                        val laneX = when (laneChoice) {
+                            0 -> -roadHalfWidth * 0.65f
+                            1 -> -roadHalfWidth * 0.22f
+                            2 -> roadHalfWidth * 0.22f
+                            else -> roadHalfWidth * 0.65f
+                        } + (Random.nextFloat() - 0.5f) * 0.75f
+                        x = laneX.coerceIn(-roadHalfWidth + 0.8f, roadHalfWidth - 0.8f)
+                        attempts++
+                    } while (usedX.any { abs(it - x) < 1.8f } && attempts < 10)
+                    usedX.add(x)
+                    cone.reset(x, spawnZ - i * 7.5f)
+                    break
+                }
+            }
+        }
+    }
+
+    fun spawnCone(x: Float, z: Float): RoadCone? {
+        for (cone in conePool) {
+            if (!cone.isActive) {
+                cone.reset(x, z)
+                return cone
+            }
+        }
+        return null
+    }
+
     fun clearAllTrackEntities() {
         for (b in ballPool) {
             b.isActive = false
@@ -979,6 +1184,9 @@ class GamePhysicsEngine(
         }
         for (sp in speedPadPool) {
             sp.isActive = false
+        }
+        for (c in conePool) {
+            c.isActive = false
         }
         boulderGenerator.pendingBoulders.clear()
     }

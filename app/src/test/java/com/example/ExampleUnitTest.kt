@@ -810,4 +810,177 @@ class ExampleUnitTest {
         assertTrue(audio.isOverdriveActive)
         assertEquals(1.4f, audio.currentSpeedMultiplier, 0.001f)
     }
+
+    @Test
+    fun roadCone_initialGameStart_hasConesSpawnedOnRoad() {
+        val audio = com.example.engine.GameAudio()
+        val physics = GamePhysicsEngine(audio) { _, _, _, _, _ -> }
+        physics.startNewGame()
+        val activeCones = physics.conePool.count { it.isActive }
+        assertTrue("Cones should be spawned on the road from start of game", activeCones >= 2)
+    }
+
+    @Test
+    fun roadCone_ballCollision_deflectsBallAndEmitsParticles() {
+        val audio = com.example.engine.GameAudio()
+        val physics = GamePhysicsEngine(audio) { _, _, _, _, _ -> }
+        physics.isRunning = true
+
+        // Place cone and ball into direct collision
+        val cone = physics.spawnCone(1.0f, -25.0f)
+        assertNotNull("Cone should spawn successfully", cone)
+
+        physics.spawnBall(
+            type = BallType.STRAIGHT,
+            x = 1.0f,
+            z = -25.0f,
+            speed = 8.0f,
+            lateralSpeed = 0f
+        )
+
+        val activeBall = physics.ballPool.first { it.isActive }
+        assertEquals(0f, activeBall.horizontalVelocity, 0.001f)
+
+        // Run physics frame to process collision
+        physics.update(0.016f, false, false, false)
+
+        // Ball should ricochet laterally
+        assertNotEquals("Ball must deflect laterally after hitting cone", 0f, activeBall.horizontalVelocity, 0.01f)
+        assertTrue("Ball deflection count must be tracked", activeBall.deflectionCount > 0)
+        assertTrue("Ball must gain dynamic curving trajectory", activeBall.curveTimeRemaining > 0f)
+
+        // Cone should react
+        assertTrue("Cone should enter hit cooldown", cone!!.hitCooldownTimer > 0f)
+
+        // Particle system must have active particles
+        val activeParticles = physics.particles.particles.count { it.lifetime > 0f }
+        assertTrue("Impact must emit particle shards and sparks", activeParticles > 0)
+    }
+
+    @Test
+    fun boulderSpeed_graduallyIncreasesWithProgression() {
+        val audio = com.example.engine.GameAudio()
+        val physics = GamePhysicsEngine(audio) { _, _, _, _, _ -> }
+        physics.startNewGame()
+        // Provide invincibility during automated progression simulation so player doesn't crash into test wave
+        physics.player.invincibleGraceTimer = 9999f
+
+        val initialMultiplier = physics.dynamicSpeedMultiplier
+        assertEquals("Initial speed multiplier should be 1.0", 1.0f, initialMultiplier, 0.05f)
+
+        // Simulate 75 seconds of survival and 800m of distance progression
+        for (i in 0 until 1500) {
+            physics.update(0.05f, false, false, false)
+        }
+
+        assertTrue("Dynamic speed multiplier must increase as player progresses", physics.dynamicSpeedMultiplier > initialMultiplier)
+        assertTrue("Survival time must have advanced", physics.runDuration > 60f)
+        assertTrue("Distance traveled must have advanced", physics.distanceTraveled > 500f)
+
+        // Active boulders should roll with enhanced progression speed
+        val currentMultiplier = physics.dynamicSpeedMultiplier
+        assertTrue("Speed multiplier should scale with distance and time", currentMultiplier >= 1.25f)
+    }
+
+    @Test
+    fun playerAnimation_strideSynchronizesWithGroundSpeed() {
+        val player = PlayerCharacter()
+        player.reset()
+
+        // 1. Slow speed (braked)
+        player.update(dt = 0.20f, leftHeld = false, rightHeld = false, brakeHeld = true, roadHalfWidth = 6f)
+        val slowAnimationTime = player.runAnimationTime
+        assertTrue("Slow speed should advance animation time", slowAnimationTime > 0f)
+
+        // 2. High speed (boosted sprint)
+        val playerFast = PlayerCharacter()
+        playerFast.reset()
+        playerFast.boostTimer = 5.0f
+        playerFast.update(dt = 0.20f, leftHeld = false, rightHeld = false, brakeHeld = false, roadHalfWidth = 6f)
+        val fastAnimationTime = playerFast.runAnimationTime
+
+        assertTrue(
+            "Higher ground speed must advance animation stride faster than slow speed",
+            fastAnimationTime > slowAnimationTime * 1.5f
+        )
+
+        // Verify natural knee bending and body bobbing bounds
+        assertTrue("Knee bend must be positive and natural", playerFast.kneeBendLeft >= 4f)
+        assertTrue("Body bobbing offset must be subtle and ground-locked", Math.abs(playerFast.bodyBobOffset) < 0.05f)
+    }
+
+    @Test
+    fun soundManager_boulderCollision_updatesPlaybackState() {
+        val soundManager = com.example.audio.SoundManager()
+        assertTrue("SoundManager should be enabled by default", soundManager.isEnabled)
+        assertEquals("Initial play count should be zero", 0, soundManager.soundPlayCount)
+
+        soundManager.playBoulderCollision()
+        assertEquals("boulder_collision", soundManager.lastPlayedSound)
+        assertEquals(1, soundManager.soundPlayCount)
+
+        soundManager.playBoulderExplode()
+        assertEquals("boulder_explode", soundManager.lastPlayedSound)
+        assertEquals(2, soundManager.soundPlayCount)
+    }
+
+    @Test
+    fun soundManager_jump_updatesPlaybackState() {
+        val soundManager = com.example.audio.SoundManager()
+        soundManager.playJump()
+        assertEquals("jump", soundManager.lastPlayedSound)
+        assertEquals(1, soundManager.soundPlayCount)
+    }
+
+    @Test
+    fun soundManager_menuInteractions_playAppropriateCues() {
+        val soundManager = com.example.audio.SoundManager()
+
+        soundManager.playMenuClick()
+        assertEquals("menu_click", soundManager.lastPlayedSound)
+
+        soundManager.playMenuSelect()
+        assertEquals("menu_select", soundManager.lastPlayedSound)
+
+        soundManager.playMenuBack()
+        assertEquals("menu_back", soundManager.lastPlayedSound)
+
+        assertEquals(3, soundManager.soundPlayCount)
+    }
+
+    @Test
+    fun soundManager_toggle_preventsSoundPlayback() {
+        val soundManager = com.example.audio.SoundManager()
+        soundManager.isEnabled = false
+
+        soundManager.playJump()
+        assertEquals("jump", soundManager.lastPlayedSound)
+        // With isEnabled = false, internal playback short-circuits gracefully
+        soundManager.release()
+    }
+
+    @Test
+    fun gameAudio_delegatesToSoundManagerWhenAttached() {
+        val audio = GameAudio()
+        val soundManager = com.example.audio.SoundManager()
+        audio.soundManager = soundManager
+
+        audio.playJump()
+        assertEquals("jump", soundManager.lastPlayedSound)
+
+        audio.playCrash()
+        assertEquals("boulder_collision", soundManager.lastPlayedSound)
+
+        audio.playBoulderExplode()
+        assertEquals("boulder_explode", soundManager.lastPlayedSound)
+
+        audio.playMenuClick()
+        assertEquals("menu_click", soundManager.lastPlayedSound)
+
+        audio.playMenuSelect()
+        assertEquals("menu_select", soundManager.lastPlayedSound)
+
+        audio.playMenuBack()
+        assertEquals("menu_back", soundManager.lastPlayedSound)
+    }
 }

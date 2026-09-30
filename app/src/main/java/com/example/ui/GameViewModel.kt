@@ -120,7 +120,10 @@ data class GameOverSummary(
 class GameViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repository: GameRecordRepository
-    val audio = GameAudio()
+    val soundManager = com.example.audio.SoundManager.getInstance(application)
+    val audio = GameAudio().apply {
+        soundManager = this@GameViewModel.soundManager
+    }
 
     private val _currentScreen = MutableStateFlow(AppScreen.MENU)
     val currentScreen: StateFlow<AppScreen> = _currentScreen.asStateFlow()
@@ -228,6 +231,7 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
         val nv = !_bgmEnabled.value
         _bgmEnabled.value = nv
         audio.isBgmEnabled = nv
+        soundManager.playMenuClick()
         if (nv && _currentScreen.value == AppScreen.PLAYING) {
             audio.startBgm()
         } else {
@@ -461,10 +465,14 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun setOverdriveMode(enabled: Boolean) {
-        _isOverdriveMode.value = enabled
+        if (_isOverdriveMode.value != enabled) {
+            _isOverdriveMode.value = enabled
+            soundManager.playMenuClick()
+        }
     }
 
     fun startGame() {
+        soundManager.playMenuSelect()
         _isNewHighScore.value = false
         _isGameOver.value = false
         _currentScore.value = 0
@@ -495,6 +503,7 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
 
     fun pauseGame() {
         if (_currentScreen.value == AppScreen.PLAYING) {
+            soundManager.playMenuClick()
             audio.stopBgm()
             physics.isRunning = false
             _currentScreen.value = AppScreen.PAUSED
@@ -505,6 +514,7 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
 
     fun resumeGame() {
         if (_currentScreen.value == AppScreen.PAUSED) {
+            soundManager.playMenuSelect()
             physics.isRunning = true
             _currentScreen.value = AppScreen.PLAYING
             _gameState.update { it.copy(isPaused = false) }
@@ -516,6 +526,7 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun goToMenu() {
+        soundManager.playMenuBack()
         audio.stopBgm()
         stopGameLoop()
         physics.isRunning = false
@@ -525,6 +536,7 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun restartGame() {
+        soundManager.playMenuSelect()
         startGame()
     }
 
@@ -546,6 +558,7 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
                 physics.player.applyCharacterModel(model)
                 _characterColor.value = model.displayName
                 audio.playCharacterEquip()
+                soundManager.playMenuSelect()
                 triggerHaptic(40)
             } else {
                 val success = repository.unlockCharacter(model.id, model.price)
@@ -553,9 +566,11 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
                     physics.player.applyCharacterModel(model)
                     _characterColor.value = model.displayName
                     audio.playUnlockSuccess()
+                    soundManager.playMenuSelect()
                     triggerHaptic(120)
                 } else {
                     audio.playBrake()
+                    soundManager.playMenuBack()
                     triggerHaptic(180)
                 }
             }
@@ -574,10 +589,35 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
         val newVal = !_soundEnabled.value
         _soundEnabled.value = newVal
         audio.isEnabled = newVal
+        soundManager.isEnabled = newVal
+        if (newVal) {
+            soundManager.playMenuClick()
+        }
     }
 
     fun toggleVibration() {
         _vibrationEnabled.value = !_vibrationEnabled.value
+        soundManager.playMenuClick()
+    }
+
+    fun playMenuClick() {
+        soundManager.playMenuClick()
+    }
+
+    fun playMenuSelect() {
+        soundManager.playMenuSelect()
+    }
+
+    fun playMenuBack() {
+        soundManager.playMenuBack()
+    }
+
+    fun playBoulderCollision() {
+        soundManager.playBoulderCollision()
+    }
+
+    fun playJumpSound() {
+        soundManager.playJump()
     }
 
     fun jump() {
@@ -892,5 +932,6 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
     override fun onCleared() {
         super.onCleared()
         stopGameLoop()
+        soundManager.release()
     }
 }
