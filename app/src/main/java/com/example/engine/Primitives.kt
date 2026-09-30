@@ -259,6 +259,94 @@ object Primitives {
     }
 
     /**
+     * High-visibility 3D safety traffic cone with weighted rubber base,
+     * fluorescent safety orange body, and reflective white hazard stripe.
+     */
+    fun createTrafficCone(
+        baseRadius: Float = 0.32f,
+        height: Float = 0.72f,
+        segments: Int = 12
+    ): Mesh {
+        val vertices = ArrayList<Float>()
+        val indices = ArrayList<Short>()
+
+        val coneOrange = floatArrayOf(1.0f, 0.40f, 0.02f, 1.0f)
+        val whiteStripe = floatArrayOf(0.96f, 0.96f, 0.98f, 1.0f)
+        val blackBase = floatArrayOf(0.14f, 0.14f, 0.16f, 1.0f)
+
+        // 1. Square dark rubber base: width = baseRadius * 2.5f, height = 0.04f
+        val bw = baseRadius * 1.25f
+        val bh = 0.04f
+        val baseIndexStart = (vertices.size / TOTAL_COMPONENT_COUNT).toShort()
+        val baseCorners = arrayOf(
+            floatArrayOf(-bw, 0f, -bw),
+            floatArrayOf(bw, 0f, -bw),
+            floatArrayOf(bw, 0f, bw),
+            floatArrayOf(-bw, 0f, bw),
+            floatArrayOf(-bw, bh, -bw),
+            floatArrayOf(bw, bh, -bw),
+            floatArrayOf(bw, bh, bw),
+            floatArrayOf(-bw, bh, bw)
+        )
+        for (c in baseCorners) {
+            vertices.add(c[0]); vertices.add(c[1]); vertices.add(c[2])
+            vertices.add(0f); vertices.add(1f); vertices.add(0f)
+            vertices.add(blackBase[0]); vertices.add(blackBase[1]); vertices.add(blackBase[2]); vertices.add(blackBase[3])
+        }
+        val baseIdx = arrayOf(
+            4, 5, 6, 4, 6, 7, // top
+            0, 4, 5, 0, 5, 1, // sides
+            1, 5, 6, 1, 6, 2,
+            2, 6, 7, 2, 7, 3,
+            3, 7, 4, 3, 4, 0
+        )
+        for (idx in baseIdx) {
+            indices.add((baseIndexStart + idx).toShort())
+        }
+
+        // 2. Tapered Cone Body with 5 vertical bands (Orange -> Reflective White Stripe -> Orange -> Cap)
+        val ringCount = 5
+        val yLevels = floatArrayOf(bh, bh + height * 0.22f, bh + height * 0.52f, bh + height * 0.88f, bh + height)
+        val radii = floatArrayOf(baseRadius, baseRadius * 0.74f, baseRadius * 0.48f, baseRadius * 0.18f, 0.05f)
+        val ringColors = arrayOf(coneOrange, whiteStripe, whiteStripe, coneOrange, coneOrange)
+
+        val coneStartIdx = (vertices.size / TOTAL_COMPONENT_COUNT).toShort()
+
+        for (r in 0 until ringCount) {
+            val y = yLevels[r]
+            val rad = radii[r]
+            val col = ringColors[r]
+            for (s in 0..segments) {
+                val angle = (s.toFloat() / segments) * 2f * PI.toFloat()
+                val nx = cos(angle)
+                val nz = sin(angle)
+                vertices.add(nx * rad); vertices.add(y); vertices.add(nz * rad)
+                vertices.add(nx * 0.85f); vertices.add(0.25f); vertices.add(nz * 0.85f)
+                vertices.add(col[0]); vertices.add(col[1]); vertices.add(col[2]); vertices.add(col[3])
+            }
+        }
+
+        val ringStride = segments + 1
+        for (r in 0 until ringCount - 1) {
+            for (s in 0 until segments) {
+                val current = (coneStartIdx + r * ringStride + s).toShort()
+                val next = (current + 1).toShort()
+                val above = (coneStartIdx + (r + 1) * ringStride + s).toShort()
+                val aboveNext = (above + 1).toShort()
+
+                indices.add(current); indices.add(above); indices.add(aboveNext)
+                indices.add(current); indices.add(aboveNext); indices.add(next)
+            }
+        }
+
+        return Mesh(
+            createFloatBuffer(vertices.toFloatArray()),
+            createShortBuffer(indices.toShortArray()),
+            indices.size
+        )
+    }
+
+    /**
      * Quad for road segments and markings on XZ plane, facing up (+Y).
      */
     fun createPlane(

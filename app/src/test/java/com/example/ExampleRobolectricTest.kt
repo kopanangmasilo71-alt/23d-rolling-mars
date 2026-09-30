@@ -351,4 +351,77 @@ class ExampleRobolectricTest {
     viewModel.toggleVibration()
     org.junit.Assert.assertTrue(viewModel.vibrationEnabled.value)
   }
+
+  @Test
+  fun `dust puff particle expands and fades over lifetime`() {
+    val dust = com.example.ui.DustPuffParticle(
+      x = 100f,
+      y = 200f,
+      vx = 50f,
+      vy = -30f,
+      radius = 10f,
+      maxRadius = 40f,
+      alpha = 0.8f,
+      initialAlpha = 0.8f,
+      life = 0f,
+      maxLife = 0.5f
+    )
+
+    org.junit.Assert.assertTrue(dust.isAlive)
+    org.junit.Assert.assertEquals(10f, dust.radius, 0.001f)
+
+    // Advance 0.25 seconds (halfway through life)
+    dust.update(0.25f)
+    org.junit.Assert.assertTrue(dust.isAlive)
+    org.junit.Assert.assertTrue("Radius should expand as dust billows", dust.radius > 10f)
+    org.junit.Assert.assertTrue("Alpha should fade as dust dissipates", dust.alpha < 0.8f)
+
+    // Advance past max life
+    dust.update(0.30f)
+    org.junit.Assert.assertFalse("Particle should expire when life exceeds maxLife", dust.isAlive)
+  }
+
+  @Test
+  fun `impact spark particle applies gravity and velocity trajectory`() {
+    val spark = com.example.ui.ImpactSparkParticle(
+      x = 100f,
+      y = 100f,
+      vx = 200f,
+      vy = -100f,
+      life = 0f,
+      maxLife = 0.4f,
+      gravity = 1000f
+    )
+
+    org.junit.Assert.assertTrue(spark.isAlive)
+    val initialVy = spark.vy
+
+    spark.update(0.1f)
+    org.junit.Assert.assertTrue(spark.isAlive)
+    org.junit.Assert.assertTrue("Gravity should pull spark downward (increasing vy)", spark.vy > initialVy)
+    org.junit.Assert.assertTrue("Spark position X should advance", spark.x > 100f)
+
+    spark.update(0.35f)
+    org.junit.Assert.assertFalse("Spark should expire past maxLife", spark.isAlive)
+  }
+
+  @Test
+  fun `collision impact event updates state flow on boulder hit`() {
+    val application = ApplicationProvider.getApplicationContext<android.app.Application>()
+    val viewModel = com.example.ui.GameViewModel(application)
+
+    org.junit.Assert.assertNull(viewModel.collisionImpactEvent.value)
+
+    viewModel.triggerCollisionImpact(
+      normalizedX = 0.5f,
+      normalizedY = 0.7f,
+      type = com.example.ui.ImpactType.FATAL_BOULDER_CRASH
+    )
+
+    val event = viewModel.collisionImpactEvent.value
+    org.junit.Assert.assertNotNull(event)
+    org.junit.Assert.assertEquals(0.5f, event!!.normalizedX, 0.001f)
+    org.junit.Assert.assertEquals(0.7f, event.normalizedY, 0.001f)
+    org.junit.Assert.assertEquals(com.example.ui.ImpactType.FATAL_BOULDER_CRASH, event.impactType)
+  }
 }

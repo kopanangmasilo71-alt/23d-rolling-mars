@@ -33,6 +33,34 @@ class GamePhysicsEngine(
     var isShootHeld: Boolean = false
     var shootCooldownTimer: Float = 0f
 
+    // AAA Hitstop Micro-Pause for Visceral Impact
+    var hitStopTimer: Float = 0f
+
+    fun triggerHitStop(duration: Float = 0.045f) {
+        hitStopTimer = duration
+    }
+
+    fun triggerDash(direction: Float): Boolean {
+        val dashed = player.triggerDash(direction)
+        if (dashed) {
+            audio.playDash()
+            cameraShakeMagnitude = 0.28f
+            particles.emitDashGhost(player.position, player.neonGlowColor)
+        }
+        return dashed
+    }
+
+    fun activateOverdrive(): Boolean {
+        val activated = player.activateOverdrive()
+        if (activated) {
+            audio.playOverdriveActivate()
+            cameraShakeMagnitude = 0.60f
+            particles.emitShockwave(Vector3(player.position.x, 0.1f, player.position.z), 40, floatArrayOf(1f, 0.85f, 0.15f, 1f))
+            onDodgeFeedback?.invoke("⚡ CHRONO OVERDRIVE ENGAGED! ⚡", 500, comboMultiplier)
+        }
+        return activated
+    }
+
     // Camera
     val cameraPos = Vector3(0f, 4.2f, 7.0f)
     val cameraLookAt = Vector3(0f, 1.2f, -14f)
@@ -144,6 +172,19 @@ class GamePhysicsEngine(
         generateInitialScenery()
         boulderGenerator.onWaveSpawned = { waveIdx, pattern, interval ->
             onHazardWaveSpawned?.invoke(waveIdx, pattern, interval)
+        }
+        player.onStyleRankUp = { rank ->
+            audio.playStyleRankUp(rank)
+            cameraShakeMagnitude = (cameraShakeMagnitude + 0.28f).coerceAtMost(0.65f)
+            val rankTitle = when (rank) {
+                "SSS" -> "SUPERNOVA"
+                "S" -> "SAVAGE"
+                "A" -> "ANARCHIC"
+                "B" -> "BRUTAL"
+                "C" -> "COOL"
+                else -> "DECENT"
+            }
+            onDodgeFeedback?.invoke("⚡ STYLE RANK $rank • $rankTitle! ⚡", 250, comboMultiplier)
         }
     }
 
@@ -327,6 +368,12 @@ class GamePhysicsEngine(
             return
         }
 
+        // AAA Impact Hitstop Micro-Pause (freezes frame for tactile crunch)
+        if (hitStopTimer > 0f) {
+            hitStopTimer -= dt
+            return
+        }
+
         gameTime += clampedDt
 
         // Gun auto-fire while held and recoil cooldown
@@ -369,6 +416,30 @@ class GamePhysicsEngine(
         if (player.isGrounded && player.justStepped && !player.isShooting) {
             val footX = player.position.x + (if (player.steppedLeftFoot) -0.15f else 0.15f)
             particles.emitDust(Vector3(footX, 0.02f, player.position.z), 2)
+        }
+
+        // Emit high-speed cyber dash phantom trail
+        if (player.isDashing) {
+            particles.emitDashGhost(player.position, player.neonGlowColor)
+        }
+
+        // Emit continuous Chrono Overdrive golden/cyan lightning aura
+        if (player.isOverdriveActive) {
+            particles.emitOverdriveAura(player.position)
+        }
+
+        // Synchronize dynamic procedural synthwave soundtrack with gameplay intensity
+        audio.isOverdriveActive = player.isOverdriveActive
+        audio.currentSpeedMultiplier = (player.forwardSpeed / player.baseNormalSpeed).coerceIn(0.85f, 1.45f)
+
+        // Emit high-speed peripheral slipstream lines
+        if (player.isBoosting || player.isOverdriveActive || player.forwardSpeed > 13.5f) {
+            val isLeftSide = Random.nextBoolean()
+            val streakX = player.position.x + (if (isLeftSide) -1f else 1f) * (roadHalfWidth * 0.82f + Random.nextFloat() * 1.6f)
+            val streakY = 1.0f + Random.nextFloat() * 2.5f
+            val streakZ = player.position.z - 6f - Random.nextFloat() * 14f
+            val streakColor = if (player.isOverdriveActive) floatArrayOf(1.0f, 0.85f, 0.2f, 0.85f) else floatArrayOf(0.2f, 0.85f, 1.0f, 0.75f)
+            particles.emitSpeedStreak(Vector3(streakX, streakY, streakZ), 2, streakColor)
         }
 
         // 4. Road scrolling & distance tracking
@@ -583,6 +654,9 @@ class GamePhysicsEngine(
                             audio.playBoulderExplode()
                             particles.emitBoulderLaserShatter(ball.position, ball.radius, ball.colorA)
                             cameraShakeMagnitude = (cameraShakeMagnitude + 0.70f).coerceAtMost(1.05f)
+                            triggerHitStop(0.040f)
+                            player.addOverdriveEnergy(0.06f)
+                            player.addStyle(65f)
                             onBoulderDestroyed?.invoke()
                             onDodgeFeedback?.invoke("TARGET BLASTED! +250", 250, comboMultiplier)
                             break
@@ -679,18 +753,38 @@ class GamePhysicsEngine(
                     ball.isActive = false
                 }
 
-                // Collision Check with Shield and Invulnerability Defense
+                // Collision Check with Shield, Chrono Overdrive, Dash, and Invulnerability Defense
                 if (checkCollision(player, ball)) {
-                    if (player.isShieldActive) {
+                    if (player.isOverdriveActive) {
+                        // CHRONO OVERDRIVE CRUSH! Boulder instantly obliterated by player's supersonic energy field!
+                        ball.isActive = false
+                        ballsDodged++
+                        val crushScore = (350 * comboMultiplier * (if (isOverdriveMode) 2 else 1) * 3 * player.styleMultiplier).toInt()
+                        score += crushScore
+                        player.addStyle(90f)
+                        audio.playBoulderExplode()
+                        cameraShakeMagnitude = 0.55f
+                        triggerHitStop(0.045f)
+                        particles.emitBoulderLaserShatter(ball.position, ball.radius * 1.25f, floatArrayOf(1.0f, 0.85f, 0.15f, 1f))
+                        particles.emitShockwave(Vector3(player.position.x, 0.1f, player.position.z), 28, floatArrayOf(1.0f, 0.85f, 0.15f, 1f))
+                        onBoulderDestroyed?.invoke()
+                        onDodgeFeedback?.invoke("OVERDRIVE CRUSH! +$crushScore", crushScore, comboMultiplier)
+                    } else if (player.isDashing) {
+                        // Invincible evasive cyber thruster roll! Phased through without crash!
+                        player.addStyle(45f)
+                        particles.emitDashGhost(player.position, player.neonGlowColor)
+                    } else if (player.isShieldActive) {
                         // SHIELD ABSORBS IMPACT! Player deflects boulder and continues running!
                         player.breakShield(gracePeriod = 1.6f)
                         ball.isActive = false
                         audio.playShieldDeflect()
                         cameraShakeMagnitude = 0.65f
+                        triggerHitStop(0.045f)
                         val multBonus = if (player.isScoreBoosted) player.scoreMultiplierValue else 1
                         val diffBonus = if (isOverdriveMode) 2 else 1
                         score += 350 * comboMultiplier * diffBonus * multBonus
                         ballsDodged++
+                        player.addStyle(50f)
 
                         // Shimmering explosion of pulverized rock and shield energy
                         particles.emitBoulderImpact(ball.position, ball.radius * 1.4f, floatArrayOf(0.0f, 0.95f, 1.0f, 1f))
@@ -807,6 +901,8 @@ class GamePhysicsEngine(
         val multBonus = if (player.isScoreBoosted) player.scoreMultiplierValue else 1
         val gain = 50 * comboMultiplier * difficultyBonus * multBonus
         score += gain
+        player.addOverdriveEnergy(0.015f)
+        player.addStyle(20f)
         if (comboMultiplier >= 4) {
             onDodgeFeedback?.invoke("PERFECT DODGE! +$gain", gain, comboMultiplier)
         } else {
@@ -827,6 +923,8 @@ class GamePhysicsEngine(
         val multBonus = if (player.isScoreBoosted) player.scoreMultiplierValue else 1
         val gain = 100 * comboMultiplier * difficultyBonus * multBonus
         score += gain
+        player.addOverdriveEnergy(0.08f)
+        player.addStyle(55f)
 
         particles.emitBurst(
             Vector3(

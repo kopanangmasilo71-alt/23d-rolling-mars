@@ -94,6 +94,7 @@ fun MainMenu(
     val currentPreset by viewModel.characterColor.collectAsStateWithLifecycle()
     val isOverdrive by viewModel.isOverdriveMode.collectAsStateWithLifecycle()
     val soundOn by viewModel.soundEnabled.collectAsStateWithLifecycle()
+    val bgmOn by viewModel.bgmEnabled.collectAsStateWithLifecycle()
     val vibrationOn by viewModel.vibrationEnabled.collectAsStateWithLifecycle()
     val profile by viewModel.playerProfile.collectAsStateWithLifecycle()
     val career by viewModel.careerStats.collectAsStateWithLifecycle()
@@ -256,6 +257,29 @@ fun MainMenu(
                             imageVector = if (soundOn) AppIcons.VolumeUp else AppIcons.VolumeMute,
                             contentDescription = "Toggle sound",
                             tint = if (soundOn) Color(0xFF00E5FF) else Color(0x77FFFFFF),
+                            modifier = Modifier.size(17.dp)
+                        )
+                    }
+                }
+
+                // Synth BGM Music Toggle
+                Surface(
+                    shape = CircleShape,
+                    color = if (bgmOn) Color(0x2AFF9100) else Color(0x22FFFFFF),
+                    border = androidx.compose.foundation.BorderStroke(
+                        1.dp,
+                        if (bgmOn) Color(0x88FF9100) else Color(0x33FFFFFF)
+                    ),
+                    modifier = Modifier
+                        .size(38.dp)
+                        .clickable { viewModel.toggleBgm() }
+                        .testTag("btn_toggle_bgm")
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = AppIcons.Bolt,
+                            contentDescription = "Toggle Synth Music",
+                            tint = if (bgmOn) Color(0xFFFF9100) else Color(0x77FFFFFF),
                             modifier = Modifier.size(17.dp)
                         )
                     }
@@ -772,15 +796,17 @@ fun MainMenu(
 
                     InstructionRow("STEER", "Hold Left / Right for analog lane shifts with momentum & lean.", Color(0xFF00E5FF))
                     Spacer(modifier = Modifier.height(8.dp))
+                    InstructionRow("CYBER DASH", "Double-tap Left / Right for instant invincible thruster roll!", Color(0xFF00E5FF))
+                    Spacer(modifier = Modifier.height(8.dp))
                     InstructionRow("JUMP", "Tuck & leap over straight boulders and bouncers.", Color(0xFFFFD600))
+                    Spacer(modifier = Modifier.height(8.dp))
+                    InstructionRow("OVERDRIVE", "Collect energy & tap OVERDRIVE to smash boulders at 3X score!", Color(0xFFFFD54F))
+                    Spacer(modifier = Modifier.height(8.dp))
+                    InstructionRow("STYLE RANK", "Chain dodges & near-misses for S & SSS rank score multipliers!", Color(0xFFFF1744))
                     Spacer(modifier = Modifier.height(8.dp))
                     InstructionRow("BRAKE", "Decelerate forward speed to let diagonal crossers roll by.", Color(0xFFFF5252))
                     Spacer(modifier = Modifier.height(8.dp))
                     InstructionRow("SHIELD", "Absorbs 1 direct boulder hit so you can continue running!", Color(0xFF00E5FF))
-                    Spacer(modifier = Modifier.height(8.dp))
-                    InstructionRow("2X MULTIPLY", "Doubles distance & dodge score points for 9 seconds!", Color(0xFFFFD54F))
-                    Spacer(modifier = Modifier.height(8.dp))
-                    InstructionRow("HYPER BOOST", "Extreme rocket propulsion and speed boost!", Color(0xFF00E676))
                     Spacer(modifier = Modifier.height(8.dp))
                     InstructionRow("CLOSE CALL", "Brush closely past boulders for +200 pts & instant combo!", Color(0xFF80D8FF))
 

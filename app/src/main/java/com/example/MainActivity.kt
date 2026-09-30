@@ -20,6 +20,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.ui.AppScreen
+import com.example.ui.CollisionParticleCanvas
 import com.example.ui.GameHud
 import com.example.ui.GameOverOverlay
 import com.example.ui.GameSurfaceView
@@ -126,6 +127,9 @@ fun RollRunnerApp(viewModel: GameViewModel) {
     ) {
         // 3D OpenGL ES Surface View renders the continuous 3D world
         GameSurfaceView(renderer = viewModel.renderer)
+
+        // AAA 2D Canvas Particle System for dynamic screen-space collision sparks & dust clouds
+        CollisionParticleCanvas(viewModel = viewModel)
 
         // UI Layer
         when {

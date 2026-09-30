@@ -40,6 +40,7 @@ class GameRenderer(val physics: GamePhysicsEngine) : GLSurfaceView.Renderer {
     private var aColorLoc = 0
 
     // Matrices
+    private var viewportAspect: Float = 9f / 16f
     private val viewMatrix = FloatArray(16)
     private val projectionMatrix = FloatArray(16).apply {
         Matrix.perspectiveM(this, 0, 64f, 9f / 16f, 0.5f, 160f)
@@ -402,9 +403,9 @@ class GameRenderer(val physics: GamePhysicsEngine) : GLSurfaceView.Renderer {
         try {
             GLES20.glViewport(0, 0, width, height)
             val h = if (height > 0) height else 1
-            val ratio = width.toFloat() / h.toFloat()
-            // Immersive 64-degree perspective camera
-            Matrix.perspectiveM(projectionMatrix, 0, 64f, ratio, 0.5f, 160f)
+            viewportAspect = width.toFloat() / h.toFloat()
+            // Immersive dynamic perspective camera
+            Matrix.perspectiveM(projectionMatrix, 0, 64f, viewportAspect, 0.5f, 160f)
         } catch (t: Throwable) {
             android.util.Log.e("GameRenderer", "Error during onSurfaceChanged", t)
         }
@@ -490,7 +491,14 @@ class GameRenderer(val physics: GamePhysicsEngine) : GLSurfaceView.Renderer {
 
             GLES20.glUseProgram(programId)
 
-            // Setup View Matrix with high-impact screen shake
+            // Dynamic FOV rush: expands perspective as player reaches hyper-speed and activates Overdrive
+            val speedFovBonus = ((physics.player.forwardSpeed - 10f) * 0.75f).coerceIn(0f, 8f)
+            val overdriveFovBonus = if (physics.player.isOverdriveActive) 7.5f else 0f
+            val boostFovBonus = if (physics.player.isBoosting) 4.5f else 0f
+            val dynamicFov = 64f + speedFovBonus + overdriveFovBonus + boostFovBonus
+            Matrix.perspectiveM(projectionMatrix, 0, dynamicFov, viewportAspect, 0.5f, 160f)
+
+            // Setup View Matrix with high-impact screen shake and dynamic camera banking
             val cam = physics.cameraPos
             val target = physics.cameraLookAt
 
@@ -499,11 +507,16 @@ class GameRenderer(val physics: GamePhysicsEngine) : GLSurfaceView.Renderer {
             val shakeOffsetY = if (shake > 0.001f) (kotlin.random.Random.nextFloat() * 2f - 1f) * shake * 1.10f else 0f
             val shakeOffsetZ = if (shake > 0.001f) (kotlin.random.Random.nextFloat() * 2f - 1f) * shake * 0.55f else 0f
 
+            // Dynamic camera banking: subtle, realistic roll into turns & cyber dash
+            val bankAngle = (physics.player.steerBankTilt * 0.16f + (if (physics.player.isDashing) physics.player.dashDirection * 0.08f else 0f)).coerceIn(-0.07f, 0.07f)
+            val upX = -kotlin.math.sin(bankAngle)
+            val upY = kotlin.math.cos(bankAngle)
+
             Matrix.setLookAtM(
                 viewMatrix, 0,
                 cam.x + shakeOffsetX, cam.y + shakeOffsetY, cam.z + shakeOffsetZ,
                 target.x + shakeOffsetX * 0.4f, target.y + shakeOffsetY * 0.4f, target.z,
-                0f, 1f, 0f
+                upX, upY, 0f
             )
 
             // Combine Projection and View matrices once per frame (avoids redundant calculations and buffer collision)
@@ -1922,6 +1935,50 @@ class GameRenderer(val physics: GamePhysicsEngine) : GLSurfaceView.Renderer {
             }
         }
 
+        // CHRONO OVERDRIVE: Supersonic Golden Aura & Prismatic Energy Fields
+        if (p.isOverdriveActive) {
+            val auraPulse = kotlin.math.sin(totalTime * 18f) * 0.15f + 0.85f
+            // Outer Rotating Energy Torus Ring
+            matrixStack.push()
+            matrixStack.translate(0f, 0.95f, 0f)
+            matrixStack.rotate(totalTime * 120f, 0f, 1f, 0f)
+            matrixStack.rotate(25f, 1f, 0f, 0f)
+            matrixStack.scale(1.4f, 1.4f, 1.4f)
+            drawMesh(torusRingMesh, floatArrayOf(1.0f, 0.85f, 0.15f, auraPulse), emissive = 1.0f)
+            matrixStack.pop()
+
+            // Counter-rotating Inner Cyan Ring
+            matrixStack.push()
+            matrixStack.translate(0f, 0.95f, 0f)
+            matrixStack.rotate(-totalTime * 160f, 0f, 1f, 0f)
+            matrixStack.rotate(-25f, 1f, 0f, 0f)
+            matrixStack.scale(1.15f, 1.15f, 1.15f)
+            drawMesh(torusRingMesh, floatArrayOf(0.0f, 0.95f, 1.0f, auraPulse), emissive = 1.0f)
+            matrixStack.pop()
+
+            // Golden Warp Streaks
+            for (i in 0 until 10) {
+                val ang = (i.toFloat() / 10f) * 2f * kotlin.math.PI.toFloat()
+                val rx = kotlin.math.cos(ang) * (0.50f + (i % 2) * 0.22f)
+                val ry = kotlin.math.sin(ang) * (0.55f + (i % 2) * 0.25f) + 0.95f
+                matrixStack.push()
+                matrixStack.translate(rx, ry, 0.4f + (i % 3) * 0.45f)
+                matrixStack.scale(0.05f, 0.05f, 2.8f)
+                drawMesh(cubeMesh, floatArrayOf(1.0f, 0.85f, 0.2f, auraPulse), emissive = 1.0f)
+                matrixStack.pop()
+            }
+        }
+
+        // Cyber Thruster Dash Phantom Ghost Trail
+        if (p.isDashing) {
+            val dashAlpha = (p.dashTimer / 0.26f).coerceIn(0.2f, 0.8f)
+            matrixStack.push()
+            matrixStack.translate(-p.dashDirection * 0.35f, 0f, 0.45f)
+            matrixStack.scale(0.88f, 0.88f, 0.88f)
+            drawMesh(cubeMesh, floatArrayOf(0.0f, 0.95f, 1.0f, dashAlpha * 0.5f), emissive = 1.0f)
+            matrixStack.pop()
+        }
+
         matrixStack.pop() // End Player
     }
 
@@ -2051,6 +2108,21 @@ class GameRenderer(val physics: GamePhysicsEngine) : GLSurfaceView.Renderer {
                     // Elongated speed slipstream streak
                     matrixStack.scale(pt.size * 0.28f, pt.size * 0.28f, pt.size * 2.6f)
                     drawMesh(cubeMesh, pt.color, emissive = 0.90f)
+                }
+                ParticleType.CYBER_GHOST -> {
+                    // Semi-transparent athletic ghost silhouette with glowing neon edges
+                    val lifeProgress = (pt.lifetime / pt.maxLife).coerceIn(0f, 1f)
+                    matrixStack.scale(pt.size * 0.85f, pt.size * 1.8f, pt.size * 0.65f)
+                    val ghostColor = floatArrayOf(pt.color[0], pt.color[1], pt.color[2], (pt.color[3] * lifeProgress).coerceIn(0f, 1f))
+                    drawMesh(cubeMesh, ghostColor, emissive = 1.0f)
+                }
+                ParticleType.OVERDRIVE_BOLT -> {
+                    // Crackling electric energy bolt
+                    val lifeProgress = (pt.lifetime / pt.maxLife).coerceIn(0f, 1f)
+                    matrixStack.rotate(pt.rotation, 0.4f, 0.8f, 0.2f)
+                    matrixStack.scale(pt.size * 0.35f, pt.size * 1.4f, pt.size * 0.35f)
+                    val boltColor = floatArrayOf(pt.color[0], pt.color[1], pt.color[2], (pt.color[3] * lifeProgress).coerceIn(0f, 1f))
+                    drawMesh(cubeMesh, boltColor, emissive = 1.0f)
                 }
             }
             matrixStack.pop()

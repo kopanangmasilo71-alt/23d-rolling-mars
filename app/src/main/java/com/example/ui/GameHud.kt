@@ -397,6 +397,64 @@ fun GameHud(
             )
         }
 
+        // AAA STYLE RANK BADGE (Left edge)
+        StyleRankBadge(
+            rank = stats.styleRank,
+            multiplier = stats.styleMultiplier,
+            modifier = Modifier
+                .align(Alignment.CenterStart)
+                .padding(
+                    start = if (isLandscape) 20.dp else 14.dp,
+                    top = if (stats.comboMultiplier > 1) 84.dp else 0.dp
+                )
+        )
+
+        // CHRONO OVERDRIVE HERO BANNER
+        AnimatedVisibility(
+            visible = stats.isOverdriveActive,
+            enter = scaleIn(tween(180)) + fadeIn(),
+            exit = scaleOut(tween(250)) + fadeOut(),
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .padding(top = alertTopPadding)
+        ) {
+            Surface(
+                shape = RoundedCornerShape(20.dp),
+                color = Color(0xF22B1805),
+                border = androidx.compose.foundation.BorderStroke(2.dp, Color(0xFFFFD54F)),
+                tonalElevation = 16.dp,
+                modifier = Modifier.padding(horizontal = 20.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                ) {
+                    Icon(
+                        imageVector = AppIcons.Bolt,
+                        contentDescription = "Chrono Overdrive",
+                        tint = Color(0xFFFFD54F),
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Column {
+                        Text(
+                            text = "CHRONO OVERDRIVE ACTIVE!",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Black,
+                            color = Color(0xFFFFD54F),
+                            letterSpacing = 1.sp
+                        )
+                        Text(
+                            text = "SUPERSONIC SPRINT • SMASH ALL BOULDERS (3X MULTIPLIER)",
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = Color.White
+                        )
+                    }
+                }
+            }
+        }
+
         // NEAR MISS FLASH NOTIFICATION
         AnimatedVisibility(
             visible = nearMissFlash,
@@ -432,113 +490,6 @@ fun GameHud(
                     )
                 }
             }
-        }
-
-        // AAA-inspired feature callouts matching the concept art direction
-        FloatingFeatureCard(
-            title = "Dynamic HUD",
-            bullets = listOf("Smooth number increase", "Dynamic speed bar", "Combo system"),
-            accent = Color(0xFF00E5FF),
-            modifier = Modifier
-                .align(Alignment.TopStart)
-                .padding(start = 12.dp, top = 96.dp)
-        )
-
-        FloatingFeatureCard(
-            title = "Parallax & motion",
-            bullets = listOf("Trees & objects move", "Motion blur at high speed", "Camera follows player"),
-            accent = Color(0xFF00E5FF),
-            modifier = Modifier
-                .align(Alignment.TopStart)
-                .padding(start = 12.dp, top = 208.dp)
-        )
-
-        FloatingFeatureCard(
-            title = "Responsive movement",
-            bullets = listOf("Smooth lane switching", "Character leans", "Realistic momentum"),
-            accent = Color(0xFF00E5FF),
-            modifier = Modifier
-                .align(Alignment.BottomStart)
-                .padding(start = 12.dp, bottom = 118.dp)
-        )
-
-        FloatingFeatureCard(
-            title = "Jump & landing feel",
-            bullets = listOf("Compression on takeoff", "Airborne animation", "Dust burst on landing"),
-            accent = Color(0xFFB76CFF),
-            modifier = Modifier
-                .align(Alignment.BottomStart)
-                .padding(start = 12.dp, bottom = 28.dp)
-        )
-
-        FloatingFeatureCard(
-            title = "Collectibles with purpose",
-            bullets = listOf("Energy orbs", "Gives speed boost", "Visual + sound feedback"),
-            accent = Color(0xFF00E5FF),
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .padding(end = 12.dp, top = 220.dp)
-        )
-
-        FloatingFeatureCard(
-            title = "Obstacles have personality",
-            bullets = listOf("Rotate & wobble", "Cast shadows", "Impact effects"),
-            accent = Color(0xFFFF7A59),
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .padding(end = 12.dp, top = 332.dp)
-        )
-
-        FloatingFeatureCard(
-            title = "Better road visuals",
-            bullets = listOf("Lane markings", "Texture & lighting", "Speed streaks"),
-            accent = Color(0xFF00E5FF),
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .padding(end = 12.dp, bottom = 118.dp)
-        )
-
-        FloatingFeatureCard(
-            title = "Smaller, transparent controls",
-            bullets = listOf("Less screen space", "Reactive press animation"),
-            accent = Color(0xFFE58BFF),
-            modifier = Modifier
-                .align(Alignment.BottomStart)
-                .padding(start = 140.dp, bottom = 20.dp)
-        )
-
-        // Bottom performance cards inspired by the concept pitch
-        Row(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .padding(bottom = 10.dp)
-                .fillMaxWidth(0.79f),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            ConceptStageCard(
-                label = "DAY 0 - 300m",
-                accent = Color(0xFF4DB6FF),
-                subtitle = "Sunset\nSlow speed\nSimple obstacles",
-                modifier = Modifier.weight(1f)
-            )
-            ConceptStageCard(
-                label = "300 - 700m",
-                accent = Color(0xFF8E24AA),
-                subtitle = "Dusk\nMore obstacles\nVaried patterns",
-                modifier = Modifier.weight(1f)
-            )
-            ConceptStageCard(
-                label = "700 - 1200m",
-                accent = Color(0xFF00E676),
-                subtitle = "Night\nHigher speed\nGlowing objects",
-                modifier = Modifier.weight(1f)
-            )
-            ConceptStageCard(
-                label = "1200m+",
-                accent = Color(0xFFFFC107),
-                subtitle = "Neon zone\nExtreme speed\nSpecial obstacles",
-                modifier = Modifier.weight(1f)
-            )
         }
 
         // BOTTOM MOBILE TOUCH CONTROLS
@@ -593,101 +544,15 @@ fun GameHud(
                 onJump = { viewModel.jump() },
                 onShootChange = { held -> viewModel.setShootHeld(held) },
                 onShoot = { viewModel.shoot() },
+                onDashLeft = { viewModel.triggerDash(-1f) },
+                onDashRight = { viewModel.triggerDash(1f) },
+                onOverdrive = { viewModel.activateOverdrive() },
+                overdriveEnergy = stats.overdriveEnergy,
+                isOverdriveActive = stats.isOverdriveActive,
                 ammo = stats.ammo,
                 isLandscape = isLandscape,
                 modifier = Modifier.fillMaxWidth()
             )
-        }
-    }
-}
-
-@Composable
-private fun FloatingFeatureCard(
-    title: String,
-    bullets: List<String>,
-    accent: Color,
-    modifier: Modifier = Modifier,
-) {
-    Surface(
-        modifier = modifier,
-        shape = RoundedCornerShape(16.dp),
-        color = Color(0xE60B1222),
-        border = androidx.compose.foundation.BorderStroke(1.5.dp, accent.copy(alpha = 0.9f)),
-        tonalElevation = 10.dp
-    ) {
-        Column(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
-            Text(
-                text = title,
-                color = Color.White,
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 0.5.sp
-            )
-            bullets.forEach { bullet ->
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(6.dp)
-                            .clip(CircleShape)
-                            .background(accent)
-                    )
-                    Text(
-                        text = bullet,
-                        color = Color(0xFFEFF4FF),
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Medium
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun ConceptStageCard(
-    label: String,
-    accent: Color,
-    subtitle: String,
-    modifier: Modifier = Modifier,
-) {
-    Surface(
-        modifier = modifier,
-        shape = RoundedCornerShape(14.dp),
-        color = Color(0xCC071827),
-        border = androidx.compose.foundation.BorderStroke(1.dp, accent.copy(alpha = 0.8f)),
-        tonalElevation = 8.dp
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 8.dp, vertical = 10.dp)
-        ) {
-            Column(
-                modifier = Modifier.align(Alignment.TopStart),
-                horizontalAlignment = Alignment.Start
-            ) {
-                Text(
-                    text = label,
-                    color = Color.White,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Black,
-                    letterSpacing = 0.4.sp
-                )
-                Spacer(modifier = Modifier.height(6.dp))
-                Text(
-                    text = subtitle.replace("\n", " • "),
-                    color = Color(0xFFE6F5FF),
-                    fontSize = 9.sp,
-                    fontWeight = FontWeight.Medium,
-                    lineHeight = 14.sp
-                )
-            }
         }
     }
 }
@@ -1243,6 +1108,80 @@ private fun ComboBadge(
                     .clip(RoundedCornerShape(2.dp)),
                 color = badgeColor,
                 trackColor = Color(0x22FFFFFF)
+            )
+        }
+    }
+}
+
+@Composable
+private fun StyleRankBadge(
+    rank: String,
+    multiplier: Float,
+    modifier: Modifier = Modifier
+) {
+    val badgeColor = when (rank) {
+        "SSS" -> Color(0xFFFF1744)
+        "S" -> Color(0xFFFF9100)
+        "A" -> Color(0xFFFFD54F)
+        "B" -> Color(0xFF00E676)
+        "C" -> Color(0xFF00E5FF)
+        else -> Color(0xFF90A4AE)
+    }
+
+    val rankTitle = when (rank) {
+        "SSS" -> "SUPERNOVA"
+        "S" -> "SAVAGE"
+        "A" -> "ANARCHIC"
+        "B" -> "BRUTAL"
+        "C" -> "COOL"
+        else -> "DECENT"
+    }
+
+    val scaleAnim = androidx.compose.runtime.remember { androidx.compose.animation.core.Animatable(1f) }
+    LaunchedEffect(rank) {
+        if (rank != "D") {
+            scaleAnim.snapTo(1.35f)
+            scaleAnim.animateTo(
+                targetValue = 1f,
+                animationSpec = androidx.compose.animation.core.spring(
+                    dampingRatio = 0.45f,
+                    stiffness = 900f
+                )
+            )
+        }
+    }
+
+    Surface(
+        modifier = modifier
+            .scale(scaleAnim.value)
+            .testTag("style_rank_badge"),
+        shape = RoundedCornerShape(14.dp),
+        color = Color(0xF2070E1E),
+        border = androidx.compose.foundation.BorderStroke(1.4.dp, badgeColor),
+        tonalElevation = 6.dp
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+        ) {
+            Text(
+                text = rankTitle,
+                fontSize = 7.sp,
+                fontWeight = FontWeight.Black,
+                color = badgeColor,
+                letterSpacing = 0.5.sp
+            )
+            Text(
+                text = rank,
+                fontSize = if (rank.length > 1) 18.sp else 22.sp,
+                fontWeight = FontWeight.Black,
+                color = badgeColor
+            )
+            Text(
+                text = "${String.format(java.util.Locale.US, "%.1f", multiplier)}X",
+                fontSize = 8.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color.White
             )
         }
     }

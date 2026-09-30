@@ -34,6 +34,22 @@ enum class AppScreen {
     GAME_OVER
 }
 
+enum class ImpactType {
+    FATAL_BOULDER_CRASH,
+    SHIELD_DEFLECT,
+    OVERDRIVE_CRUSH,
+    BOULDER_BLAST
+}
+
+data class CollisionImpactEvent(
+    val id: Long = 0L,
+    val normalizedX: Float = 0.5f,
+    val normalizedY: Float = 0.68f,
+    val screenX: Float = 0f,
+    val screenY: Float = 0f,
+    val impactType: ImpactType = ImpactType.FATAL_BOULDER_CRASH
+)
+
 data class LiveGameStats(
     val score: Int = 0,
     val distanceMeters: Int = 0,
@@ -76,7 +92,13 @@ data class LiveGameStats(
     val waveIndex: Int = 1,
     val wavePatternName: String = "SOLO PATROL",
     val currentSpawnInterval: Float = 2.2f,
-    val isBreatherWave: Boolean = false
+    val isBreatherWave: Boolean = false,
+    val styleRank: String = "D",
+    val styleMultiplier: Float = 1.0f,
+    val styleScore: Float = 0f,
+    val overdriveEnergy: Float = 0.25f,
+    val isOverdriveActive: Boolean = false,
+    val isDashing: Boolean = false
 )
 
 data class GameOverSummary(
@@ -199,6 +221,20 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
     private val _soundEnabled = MutableStateFlow(true)
     val soundEnabled: StateFlow<Boolean> = _soundEnabled.asStateFlow()
 
+    private val _bgmEnabled = MutableStateFlow(true)
+    val bgmEnabled: StateFlow<Boolean> = _bgmEnabled.asStateFlow()
+
+    fun toggleBgm() {
+        val nv = !_bgmEnabled.value
+        _bgmEnabled.value = nv
+        audio.isBgmEnabled = nv
+        if (nv && _currentScreen.value == AppScreen.PLAYING) {
+            audio.startBgm()
+        } else {
+            audio.stopBgm()
+        }
+    }
+
     private val _vibrationEnabled = MutableStateFlow(true)
     val vibrationEnabled: StateFlow<Boolean> = _vibrationEnabled.asStateFlow()
 
@@ -232,6 +268,22 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _screenShakeIntensity = MutableStateFlow(0f)
     val screenShakeIntensity: StateFlow<Float> = _screenShakeIntensity.asStateFlow()
+
+    private val _collisionImpactEvent = MutableStateFlow<CollisionImpactEvent?>(null)
+    val collisionImpactEvent: StateFlow<CollisionImpactEvent?> = _collisionImpactEvent.asStateFlow()
+
+    fun triggerCollisionImpact(
+        normalizedX: Float = 0.5f,
+        normalizedY: Float = 0.68f,
+        type: ImpactType = ImpactType.FATAL_BOULDER_CRASH
+    ) {
+        _collisionImpactEvent.value = CollisionImpactEvent(
+            id = System.nanoTime(),
+            normalizedX = normalizedX,
+            normalizedY = normalizedY,
+            impactType = type
+        )
+    }
 
     fun triggerScreenShake(intensity: Float) {
         _screenShakeIntensity.value = intensity
@@ -324,6 +376,11 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
 
         physics.onPlayerHitObstacle = { _, isShieldBreak ->
             triggerObstacleCollisionHaptic(isFatal = !isShieldBreak)
+            val normX = ((physics.player.position.x / (physics.roadHalfWidth * 1.15f)) * 0.45f + 0.5f).coerceIn(0.12f, 0.88f)
+            val normY = 0.68f
+            val impactType = if (isShieldBreak) ImpactType.SHIELD_DEFLECT else ImpactType.FATAL_BOULDER_CRASH
+            triggerCollisionImpact(normX, normY, impactType)
+
             if (!isShieldBreak) {
                 triggerScreenShake(32.0f)
             } else {
@@ -363,6 +420,10 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
         physics.onBoulderDestroyed = {
             triggerHaptic(200, heavy = true)
             triggerScreenShake(24.0f)
+            val normX = ((physics.player.position.x / (physics.roadHalfWidth * 1.15f)) * 0.45f + 0.5f).coerceIn(0.12f, 0.88f)
+            val impactType = if (physics.player.isOverdriveActive) ImpactType.OVERDRIVE_CRUSH else ImpactType.BOULDER_BLAST
+            val normY = if (physics.player.isOverdriveActive) 0.68f else 0.48f
+            triggerCollisionImpact(normX, normY, impactType)
         }
 
         physics.onOutOfAmmo = {
@@ -426,11 +487,15 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
         val model = com.example.engine.CharacterModelId.fromId(equippedId)
         physics.startNewGame(model.id, _isOverdriveMode.value)
         _currentScreen.value = AppScreen.PLAYING
+        if (_bgmEnabled.value && _soundEnabled.value) {
+            audio.startBgm()
+        }
         startGameLoop()
     }
 
     fun pauseGame() {
         if (_currentScreen.value == AppScreen.PLAYING) {
+            audio.stopBgm()
             physics.isRunning = false
             _currentScreen.value = AppScreen.PAUSED
             _gameState.update { it.copy(isPaused = true) }
@@ -443,11 +508,15 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
             physics.isRunning = true
             _currentScreen.value = AppScreen.PLAYING
             _gameState.update { it.copy(isPaused = false) }
+            if (_bgmEnabled.value && _soundEnabled.value) {
+                audio.startBgm()
+            }
             startGameLoop()
         }
     }
 
     fun goToMenu() {
+        audio.stopBgm()
         stopGameLoop()
         physics.isRunning = false
         physics.clearAllTrackEntities()
@@ -514,6 +583,18 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
     fun jump() {
         physics.jump()
         triggerHaptic(45)
+    }
+
+    fun triggerDash(direction: Float): Boolean {
+        val ok = physics.triggerDash(direction)
+        if (ok) triggerHaptic(35)
+        return ok
+    }
+
+    fun activateOverdrive(): Boolean {
+        val ok = physics.activateOverdrive()
+        if (ok) triggerHaptic(140)
+        return ok
     }
 
     fun setLeftHeld(held: Boolean) {
@@ -628,7 +709,13 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
                 waveIndex = physics.waveCount,
                 wavePatternName = physics.currentHazardPattern.displayName,
                 currentSpawnInterval = physics.currentSpawnInterval,
-                isBreatherWave = physics.isBreatherWave
+                isBreatherWave = physics.isBreatherWave,
+                styleRank = physics.player.styleRank,
+                styleMultiplier = physics.player.styleMultiplier,
+                styleScore = physics.player.styleScore,
+                overdriveEnergy = physics.player.overdriveEnergy,
+                isOverdriveActive = physics.player.isOverdriveActive,
+                isDashing = physics.player.isDashing
             )
         }
     }
@@ -664,6 +751,7 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
         val characterBonus = if (physics.player.model == com.example.engine.CharacterModelId.CHRONOS) 1.25f else 1.0f
         val pointsEarned = ((basePoints + dodgeBonus + comboBonus) * characterBonus).toInt()
 
+        audio.stopBgm()
         stopGameLoop()
         _isGameOver.value = true
         _currentScore.value = score

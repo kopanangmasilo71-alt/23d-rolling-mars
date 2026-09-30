@@ -106,6 +106,110 @@ class SpeedPad(val id: Int) {
     }
 }
 
+/**
+ * Tactical safety traffic cone placed on the speedway.
+ * Acts as a deflection obstacle that ricochets rolling boulders unpredictably,
+ * creating dynamic, emergent arcade challenges over time!
+ */
+class RoadCone(val id: Int) {
+    var isActive: Boolean = false
+    val position = Vector3()
+    val velocity = Vector3()
+    val radius: Float = 0.38f
+    val height: Float = 0.72f
+    var wobbleAngleX: Float = 0f
+    var wobbleAngleZ: Float = 0f
+    var wobbleVelX: Float = 0f
+    var wobbleVelZ: Float = 0f
+    var isLaunched: Boolean = false
+    var hitCooldownTimer: Float = 0f
+    var lifetimeAfterHit: Float = 0f
+
+    fun reset(x: Float, z: Float) {
+        position.set(x, 0f, z)
+        velocity.set(0f, 0f, 0f)
+        isActive = true
+        isLaunched = false
+        wobbleAngleX = 0f
+        wobbleAngleZ = 0f
+        wobbleVelX = 0f
+        wobbleVelZ = 0f
+        hitCooldownTimer = 0f
+        lifetimeAfterHit = 0f
+    }
+
+    fun onStruck(impactDirX: Float, impactSpeed: Float) {
+        if (hitCooldownTimer > 0f) return
+        hitCooldownTimer = 0.20f
+
+        if (impactSpeed > 10f || kotlin.math.abs(impactDirX) > 2.0f) {
+            // Hard impact launches cone airborne with tumble rotation
+            isLaunched = true
+            velocity.set(
+                impactDirX * 1.6f + (kotlin.random.Random.nextFloat() - 0.5f) * 4f,
+                kotlin.random.Random.nextFloat() * 4.5f + 3.0f,
+                kotlin.random.Random.nextFloat() * 4.5f + 3.5f
+            )
+            wobbleVelX = (kotlin.random.Random.nextFloat() - 0.5f) * 650f
+            wobbleVelZ = (kotlin.random.Random.nextFloat() - 0.5f) * 650f
+        } else {
+            // Glancing impact: heavy elastic rubber wobble oscillation
+            wobbleVelX = (impactDirX * 70f).coerceIn(-180f, 180f)
+            wobbleVelZ = (kotlin.random.Random.nextFloat() - 0.5f) * 120f
+        }
+    }
+
+    fun update(dt: Float) {
+        if (!isActive) return
+
+        if (hitCooldownTimer > 0f) {
+            hitCooldownTimer -= dt
+        }
+
+        if (isLaunched) {
+            lifetimeAfterHit += dt
+            position.x += velocity.x * dt
+            position.y += velocity.y * dt
+            position.z += velocity.z * dt
+            velocity.y -= 14f * dt // gravity
+
+            if (position.y < 0f) {
+                position.y = 0f
+                velocity.y = -velocity.y * 0.40f
+                velocity.x *= 0.75f
+                velocity.z *= 0.75f
+            }
+
+            wobbleAngleX = (wobbleAngleX + wobbleVelX * dt) % 360f
+            wobbleAngleZ = (wobbleAngleZ + wobbleVelZ * dt) % 360f
+
+            if (lifetimeAfterHit > 2.5f || position.z > 22f || position.y < -5f) {
+                isActive = false
+            }
+        } else {
+            // Damped elastic spring wobble oscillation
+            if (wobbleAngleX != 0f || wobbleVelX != 0f) {
+                val springForceX = -wobbleAngleX * 45f
+                wobbleVelX = (wobbleVelX + springForceX * dt) * (1f - dt * 5.5f).coerceAtLeast(0f)
+                wobbleAngleX += wobbleVelX * dt
+                if (kotlin.math.abs(wobbleAngleX) < 0.5f && kotlin.math.abs(wobbleVelX) < 1.0f) {
+                    wobbleAngleX = 0f
+                    wobbleVelX = 0f
+                }
+            }
+            if (wobbleAngleZ != 0f || wobbleVelZ != 0f) {
+                val springForceZ = -wobbleAngleZ * 45f
+                wobbleVelZ = (wobbleVelZ + springForceZ * dt) * (1f - dt * 5.5f).coerceAtLeast(0f)
+                wobbleAngleZ += wobbleVelZ * dt
+                if (kotlin.math.abs(wobbleAngleZ) < 0.5f && kotlin.math.abs(wobbleVelZ) < 1.0f) {
+                    wobbleAngleZ = 0f
+                    wobbleVelZ = 0f
+                }
+            }
+        }
+    }
+}
+
 enum class CollectibleType(
     val displayName: String,
     val description: String,
@@ -461,7 +565,101 @@ class PlayerCharacter {
     val isShieldActive: Boolean get() = hasShield && shieldTimer > 0f
 
     var invincibleGraceTimer: Float = 0f
-    val isInvincible: Boolean get() = isShieldActive || invincibleGraceTimer > 0f
+
+    // AAA Cyber Dash Evasion System
+    var dashTimer: Float = 0f
+    var dashCooldown: Float = 0f
+    var dashDirection: Float = 0f
+    val isDashing: Boolean get() = dashTimer > 0f
+
+    // Chrono Overdrive Ultimate System
+    var overdriveEnergy: Float = 0.25f // 0.0f to 1.0f
+    var overdriveTimer: Float = 0f
+    val isOverdriveActive: Boolean get() = overdriveTimer > 0f
+
+    // Style Rank Progression System (D, C, B, A, S, SSS)
+    var styleScore: Float = 0f
+    var lastNotifiedRank: String = "D"
+    var onStyleRankUp: ((String) -> Unit)? = null
+
+    private fun rankTier(rank: String): Int = when (rank) {
+        "SSS" -> 5
+        "S" -> 4
+        "A" -> 3
+        "B" -> 2
+        "C" -> 1
+        else -> 0
+    }
+
+    val styleRank: String
+        get() = when {
+            styleScore >= 1200f -> "SSS"
+            styleScore >= 750f -> "S"
+            styleScore >= 450f -> "A"
+            styleScore >= 250f -> "B"
+            styleScore >= 100f -> "C"
+            else -> "D"
+        }
+    val styleMultiplier: Float
+        get() = when (styleRank) {
+            "SSS" -> 3.0f
+            "S" -> 2.5f
+            "A" -> 2.0f
+            "B" -> 1.5f
+            "C" -> 1.2f
+            else -> 1.0f
+        }
+
+    val isInvincible: Boolean get() = isShieldActive || invincibleGraceTimer > 0f || isDashing || isOverdriveActive
+
+    fun triggerDash(direction: Float): Boolean {
+        if (dashCooldown <= 0f && !isTumbling) {
+            dashDirection = if (direction >= 0f) 1f else -1f
+            dashTimer = 0.26f
+            dashCooldown = 0.48f
+            horizontalVelocity = dashDirection * 22f
+            addStyle(25f)
+            return true
+        }
+        return false
+    }
+
+    fun addOverdriveEnergy(amount: Float) {
+        if (!isOverdriveActive) {
+            overdriveEnergy = (overdriveEnergy + amount).coerceIn(0f, 1.0f)
+        }
+    }
+
+    fun activateOverdrive(): Boolean {
+        if (overdriveEnergy >= 0.99f && !isTumbling) {
+            overdriveEnergy = 0f
+            overdriveTimer = 7.5f
+            boostTimer = 7.5f
+            addAmmo(15)
+            addStyle(150f)
+            return true
+        }
+        return false
+    }
+
+    fun addStyle(points: Float) {
+        styleScore = (styleScore + points).coerceAtMost(2000f)
+        val current = styleRank
+        if (rankTier(current) > rankTier(lastNotifiedRank)) {
+            lastNotifiedRank = current
+            onStyleRankUp?.invoke(current)
+        }
+    }
+
+    fun decayStyle(dt: Float) {
+        if (styleScore > 0f) {
+            styleScore = (styleScore - dt * 25f).coerceAtLeast(0f)
+            val current = styleRank
+            if (rankTier(current) < rankTier(lastNotifiedRank)) {
+                lastNotifiedRank = current
+            }
+        }
+    }
 
     var scoreMultiplierTimer: Float = 0f
     var maxMultiplierDuration: Float = 9f
@@ -502,6 +700,13 @@ class PlayerCharacter {
         invincibleGraceTimer = 0f
         scoreMultiplierTimer = 0f
         scoreMultiplierValue = 1
+        dashTimer = 0f
+        dashCooldown = 0f
+        dashDirection = 0f
+        overdriveEnergy = 0.25f
+        overdriveTimer = 0f
+        styleScore = 0f
+        lastNotifiedRank = "D"
         landingSquash = 0f
         nearMissTilt = 0f
         wasInAir = false
@@ -695,6 +900,20 @@ class PlayerCharacter {
             boostTimer = (boostTimer - dt).coerceAtLeast(0f)
         }
 
+        if (dashTimer > 0f) {
+            dashTimer = (dashTimer - dt).coerceAtLeast(0f)
+        }
+
+        if (dashCooldown > 0f) {
+            dashCooldown = (dashCooldown - dt).coerceAtLeast(0f)
+        }
+
+        if (overdriveTimer > 0f) {
+            overdriveTimer = (overdriveTimer - dt).coerceAtLeast(0f)
+        }
+
+        decayStyle(dt)
+
         if (shieldTimer > 0f) {
             shieldTimer = (shieldTimer - dt).coerceAtLeast(0f)
             if (shieldTimer <= 0f) {
@@ -713,9 +932,10 @@ class PlayerCharacter {
             }
         }
 
-        // Forward speed adjustment based on brake input & turbo boost
+        // Forward speed adjustment based on brake input & turbo boost & overdrive
+        val overdriveBonus = if (isOverdriveActive) 8.5f else 0f
         val boostBonus = if (isBoosting) 5.5f else 0f
-        val targetForwardSpeed = if (brakeHeld) minBrakedSpeed else (baseNormalSpeed + boostBonus)
+        val targetForwardSpeed = if (brakeHeld && !isOverdriveActive) minBrakedSpeed else (baseNormalSpeed + boostBonus + overdriveBonus)
         val accelRate = if (targetForwardSpeed > forwardSpeed) 12.0f else 18.0f
         forwardSpeed += (targetForwardSpeed - forwardSpeed) * (accelRate * dt).coerceAtMost(1f)
 
@@ -737,6 +957,11 @@ class PlayerCharacter {
         // Smooth critically damped acceleration and deceleration (no jarring linear snap)
         val steerResponseRate = if (targetInput != 0f) 15.0f else 18.0f
         horizontalVelocity += (targetHorizontalVelocity - horizontalVelocity) * (steerResponseRate * dt).coerceAtMost(1f)
+
+        // Supersonic Cyber Thruster Dash lateral override
+        if (isDashing) {
+            horizontalVelocity = dashDirection * 22f * (dashTimer / 0.26f).coerceIn(0.6f, 1f)
+        }
 
         position.x += horizontalVelocity * dt
 
@@ -916,7 +1141,9 @@ enum class ParticleType {
     DUST_CLOUD,
     ROCK_DEBRIS,
     SHOCKWAVE,
-    SPEED_STREAK
+    SPEED_STREAK,
+    CYBER_GHOST,
+    OVERDRIVE_BOLT
 }
 
 class Particle(
@@ -1302,6 +1529,92 @@ class ParticleSystem(val maxParticles: Int = 750) {
         }
     }
 
+    fun emitDashGhost(origin: Vector3, color: FloatArray) {
+        for (p in particles) {
+            if (p.lifetime <= 0f) {
+                p.particleType = ParticleType.CYBER_GHOST
+                p.position.set(origin.x, origin.y + 0.9f, origin.z + 0.2f)
+                p.velocity.set(0f, 0f, 4f)
+                p.lifetime = 0.24f
+                p.maxLife = 0.24f
+                p.size = 0.55f
+                p.growthRate = 0f
+                p.rotation = 0f
+                p.rotSpeed = 0f
+                p.color[0] = color[0]
+                p.color[1] = color[1]
+                p.color[2] = color[2]
+                p.color[3] = 0.70f
+                break
+            }
+        }
+    }
+
+    fun emitOverdriveAura(origin: Vector3) {
+        var count = 0
+        for (p in particles) {
+            if (p.lifetime <= 0f) {
+                p.particleType = ParticleType.OVERDRIVE_BOLT
+                val ang = kotlin.random.Random.nextFloat() * (2f * PI.toFloat())
+                val r = 0.45f + kotlin.random.Random.nextFloat() * 0.35f
+                p.position.set(
+                    origin.x + kotlin.math.cos(ang) * r,
+                    origin.y + kotlin.random.Random.nextFloat() * 1.8f,
+                    origin.z + kotlin.math.sin(ang) * r
+                )
+                p.velocity.set(
+                    (kotlin.random.Random.nextFloat() - 0.5f) * 4f,
+                    kotlin.random.Random.nextFloat() * 4f + 2f,
+                    (kotlin.random.Random.nextFloat() - 0.5f) * 4f
+                )
+                p.lifetime = 0.25f
+                p.maxLife = 0.25f
+                p.size = 0.16f
+                p.growthRate = 0f
+                // Electric Gold & Cyan lightning sparks
+                if (kotlin.random.Random.nextBoolean()) {
+                    p.color[0] = 1.0f; p.color[1] = 0.85f; p.color[2] = 0.15f; p.color[3] = 0.95f
+                } else {
+                    p.color[0] = 0.0f; p.color[1] = 0.95f; p.color[2] = 1.0f; p.color[3] = 0.95f
+                }
+                count++
+                if (count >= 3) break
+            }
+        }
+    }
+
+    fun emitConeImpact(origin: Vector3, normalX: Float) {
+        // High-energy orange & white plastic shards
+        var emittedShards = 0
+        for (p in particles) {
+            if (p.lifetime <= 0f) {
+                p.particleType = ParticleType.ROCK_DEBRIS
+                val ang = (kotlin.random.Random.nextFloat() - 0.5f) * 2.2f + (if (normalX >= 0) 0f else PI.toFloat())
+                val speed = kotlin.random.Random.nextFloat() * 7f + 4.5f
+                p.position.set(origin.x, origin.y + 0.35f, origin.z)
+                p.velocity.set(kotlin.math.cos(ang) * speed, kotlin.random.Random.nextFloat() * 4.5f + 2.5f, kotlin.math.sin(ang) * speed + 3f)
+                p.lifetime = 0.55f
+                p.maxLife = 0.55f
+                p.size = 0.12f
+                p.rotation = kotlin.random.Random.nextFloat() * 360f
+                p.rotSpeed = (kotlin.random.Random.nextFloat() - 0.5f) * 600f
+                if (emittedShards % 3 == 0) {
+                    // White reflective stripe shard
+                    p.color[0] = 0.96f; p.color[1] = 0.96f; p.color[2] = 0.98f; p.color[3] = 1f
+                } else {
+                    // Fluorescent safety orange shard
+                    p.color[0] = 1.0f; p.color[1] = 0.40f; p.color[2] = 0.02f; p.color[3] = 1f
+                }
+                emittedShards++
+                if (emittedShards >= 10) break
+            }
+        }
+        // Friction spark burst
+        emitBurst(Vector3(origin.x, origin.y + 0.3f, origin.z), 12, floatArrayOf(1.0f, 0.75f, 0.1f))
+        // Road dust puff
+        emitDust(Vector3(origin.x, 0.05f, origin.z), 6)
+    }
+
     fun update(dt: Float, worldScrollZ: Float = 0f) {
         for (p in particles) {
             if (p.lifetime > 0f) {
@@ -1346,12 +1659,14 @@ class ParticleSystem(val maxParticles: Int = 750) {
                         p.position.z += p.velocity.z * dt
                         p.color[3] = (p.lifetime / p.maxLife).coerceIn(0f, 1f) * 0.70f
                     }
-                    ParticleType.SPARK, ParticleType.SPEED_STREAK -> {
+                    ParticleType.SPARK, ParticleType.SPEED_STREAK, ParticleType.CYBER_GHOST, ParticleType.OVERDRIVE_BOLT -> {
                         p.position.x += p.velocity.x * dt
                         p.position.y += p.velocity.y * dt
                         p.position.z += p.velocity.z * dt
-                        p.velocity.y -= 14f * dt
-                        p.color[3] = (p.lifetime / p.maxLife).coerceIn(0f, 1f) * 0.75f
+                        if (p.particleType == ParticleType.SPARK) {
+                            p.velocity.y -= 14f * dt
+                        }
+                        p.color[3] = (p.lifetime / p.maxLife).coerceIn(0f, 1f) * 0.85f
                     }
                 }
             }

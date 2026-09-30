@@ -725,4 +725,89 @@ class ExampleUnitTest {
         assertTrue("Collision with shield must report isShieldBreak = true", hitWasShieldBreak)
         assertFalse("Game should NOT be game over when shield absorbs hit", physics.isGameOver)
     }
+
+    @Test
+    fun player_cyberDash_grantsInvincibilityAndLateralImpulse() {
+        val player = PlayerCharacter()
+        player.reset()
+
+        assertFalse(player.isDashing)
+        assertFalse(player.isInvincible)
+
+        val dashed = player.triggerDash(1f) // Dash right
+        assertTrue("Dash should succeed when cooldown is zero", dashed)
+        assertTrue("Player must be in dashing state", player.isDashing)
+        assertTrue("Player must have invincibility frames while dashing", player.isInvincible)
+        assertTrue("Horizontal velocity must spike for rapid evasion", player.horizontalVelocity > 15f)
+
+        // Rapid second dash should respect cooldown
+        val doubleDash = player.triggerDash(1f)
+        assertFalse("Cannot dash again immediately while on cooldown", doubleDash)
+    }
+
+    @Test
+    fun player_chronoOverdrive_crushesBouldersSafely() {
+        val audio = GameAudio()
+        val physics = GamePhysicsEngine(audio) { _, _, _, _, _ -> }
+        physics.startNewGame()
+
+        // Give player 100% overdrive energy and engage
+        physics.player.overdriveEnergy = 1.0f
+        val activated = physics.activateOverdrive()
+        assertTrue("Overdrive should activate when energy is 100%", activated)
+        assertTrue("Player must be in Chrono Overdrive active state", physics.player.isOverdriveActive)
+        assertTrue("Player must be invincible in Overdrive", physics.player.isInvincible)
+
+        // Spawn boulder on player position
+        physics.spawnBall(
+            type = BallType.STRAIGHT,
+            x = physics.player.position.x,
+            z = physics.player.position.z,
+            speed = 10f,
+            lateralSpeed = 0f
+        )
+
+        physics.update(0.016f, false, false, false)
+
+        assertFalse("Player must NOT die from boulder while in Chrono Overdrive", physics.isGameOver)
+        assertTrue("Boulders are obliterated by overdrive crush", physics.ballsDodged > 0)
+    }
+
+    @Test
+    fun player_styleRankUp_triggersEventAndMultipliers() {
+        val player = PlayerCharacter()
+        player.reset()
+
+        var notifiedRank: String? = null
+        player.onStyleRankUp = { rank ->
+            notifiedRank = rank
+        }
+
+        assertEquals("D", player.styleRank)
+        assertEquals(1.0f, player.styleMultiplier, 0.01f)
+
+        // Award style points up to S rank
+        player.addStyle(800f)
+        assertEquals("S", player.styleRank)
+        assertEquals("S", notifiedRank)
+        assertTrue("S rank provides style multiplier bonus", player.styleMultiplier >= 2.5f)
+
+        // Award style points to SSS Supernova rank
+        player.addStyle(500f)
+        assertEquals("SSS", player.styleRank)
+        assertEquals("SSS", notifiedRank)
+        assertEquals(3.0f, player.styleMultiplier, 0.01f)
+    }
+
+    @Test
+    fun gameAudio_dynamicTempoAndOverdriveTracking() {
+        val audio = GameAudio()
+        assertFalse(audio.isOverdriveActive)
+        assertEquals(1.0f, audio.currentSpeedMultiplier, 0.001f)
+
+        audio.isOverdriveActive = true
+        audio.currentSpeedMultiplier = 1.4f
+        assertTrue(audio.isOverdriveActive)
+        assertEquals(1.4f, audio.currentSpeedMultiplier, 0.001f)
+    }
 }

@@ -1,8 +1,13 @@
 package com.example.ui
 
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -59,6 +64,11 @@ fun TouchController(
     onShootChange: (Boolean) -> Unit = {},
     onShoot: () -> Unit = {},
     onBrakeChange: (Boolean) -> Unit = {},
+    onDashLeft: () -> Unit = {},
+    onDashRight: () -> Unit = {},
+    onOverdrive: () -> Unit = {},
+    overdriveEnergy: Float = 0f,
+    isOverdriveActive: Boolean = false,
     ammo: Int = 10,
     isLandscape: Boolean = false,
     modifier: Modifier = Modifier
@@ -91,7 +101,8 @@ fun TouchController(
                         testTag = "btn_steer_left",
                         size = 64.dp,
                         activeColor = Color(0xFF00E5FF),
-                        onHoldChange = onLeftChange
+                        onHoldChange = onLeftChange,
+                        onDoubleTap = onDashLeft
                     )
                     TouchPadButton(
                         icon = AppIcons.ArrowUpward,
@@ -103,6 +114,14 @@ fun TouchController(
                         onPressDown = onJump
                     )
                 }
+
+                // CENTER: CHRONO OVERDRIVE ULTIMATE
+                OverdriveButton(
+                    energy = overdriveEnergy,
+                    isActive = isOverdriveActive,
+                    onActivate = onOverdrive,
+                    modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 6.dp)
+                )
 
                 // BOTTOM RIGHT: SHOOT (inner) + RIGHT (bottom-right corner)
                 Row(
@@ -129,7 +148,8 @@ fun TouchController(
                         testTag = "btn_steer_right",
                         size = 64.dp,
                         activeColor = Color(0xFF00E5FF),
-                        onHoldChange = onRightChange
+                        onHoldChange = onRightChange,
+                        onDoubleTap = onDashRight
                     )
                 }
             }
@@ -147,38 +167,47 @@ fun TouchController(
             ) {
                 // Left group: LEFT (at bottom-left corner) + JUMP
                 Row(
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     TouchPadButton(
                         icon = Icons.AutoMirrored.Filled.ArrowBack,
                         label = "LEFT",
                         testTag = "btn_steer_left",
-                        size = 62.dp,
+                        size = 60.dp,
                         activeColor = Color(0xFF00E5FF),
-                        onHoldChange = onLeftChange
+                        onHoldChange = onLeftChange,
+                        onDoubleTap = onDashLeft
                     )
                     TouchPadButton(
                         icon = AppIcons.ArrowUpward,
                         label = "JUMP",
                         testTag = "btn_jump",
-                        size = 62.dp,
+                        size = 60.dp,
                         activeColor = Color(0xFF00E5FF),
                         onHoldChange = {},
                         onPressDown = onJump
                     )
                 }
 
+                // Center: Chrono Overdrive Ultimate
+                OverdriveButton(
+                    energy = overdriveEnergy,
+                    isActive = isOverdriveActive,
+                    onActivate = onOverdrive,
+                    size = 54.dp
+                )
+
                 // Right group: SHOOT (inner, not at corner) + RIGHT (at corner)
                 Row(
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     TouchPadButton(
                         icon = AppIcons.FlashOn,
                         label = if (hasAmmo) "SHOOT" else "EMPTY",
                         testTag = "btn_shoot",
-                        size = 62.dp,
+                        size = 60.dp,
                         activeColor = if (hasAmmo) Color(0xFFFF3D00) else Color(0xFFFF5252),
                         badge = "$ammo",
                         badgeColor = if (hasAmmo) Color(0xFFFF6D00) else Color(0xFFD50000),
@@ -189,9 +218,10 @@ fun TouchController(
                         icon = Icons.AutoMirrored.Filled.ArrowForward,
                         label = "RIGHT",
                         testTag = "btn_steer_right",
-                        size = 62.dp,
+                        size = 60.dp,
                         activeColor = Color(0xFF00E5FF),
-                        onHoldChange = onRightChange
+                        onHoldChange = onRightChange,
+                        onDoubleTap = onDashRight
                     )
                 }
             }
@@ -212,11 +242,13 @@ fun TouchPadButton(
     onHoldChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
     onPressDown: (() -> Unit)? = null,
+    onDoubleTap: (() -> Unit)? = null,
     size: Dp = 64.dp,
     badge: String? = null,
     badgeColor: Color = Color(0xFFFF6D00)
 ) {
     var isPressed by remember { mutableStateOf(false) }
+    var lastTapTime by remember { mutableStateOf(0L) }
     val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
 
     val scale by animateFloatAsState(
@@ -245,13 +277,32 @@ fun TouchPadButton(
             .testTag(testTag)
             .pointerInput(Unit) {
                 awaitEachGesture {
-                    awaitFirstDown(requireUnconsumed = false)
+                    val down = awaitFirstDown(requireUnconsumed = false)
                     isPressed = true
+                    val now = System.currentTimeMillis()
+                    if (now - lastTapTime < 320L) {
+                        onDoubleTap?.invoke()
+                    }
+                    lastTapTime = now
+
                     haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
                     onHoldChange(true)
                     onPressDown?.invoke()
 
-                    waitForUpOrCancellation()
+                    var hasSwiped = false
+                    do {
+                        val event = awaitPointerEvent()
+                        val currentPointer = event.changes.firstOrNull { it.id == down.id }
+                        if (currentPointer != null && !hasSwiped && onDoubleTap != null) {
+                            val dragDistance = currentPointer.position.x - down.position.x
+                            if (kotlin.math.abs(dragDistance) > 36f) {
+                                hasSwiped = true
+                                haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+                                onDoubleTap.invoke()
+                            }
+                        }
+                    } while (event.changes.any { it.pressed })
+
                     isPressed = false
                     onHoldChange(false)
                 }
@@ -275,6 +326,15 @@ fun TouchPadButton(
                 letterSpacing = 0.5.sp,
                 color = if (isPressed) activeColor else Color(0xDDFFFFFF)
             )
+            if (onDoubleTap != null) {
+                Text(
+                    text = "DASH",
+                    fontSize = 7.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = Color(0xAA00E5FF),
+                    letterSpacing = 0.5.sp
+                )
+            }
         }
 
         if (badge != null) {
@@ -291,6 +351,95 @@ fun TouchPadButton(
                     fontSize = 8.sp,
                     fontWeight = FontWeight.Black,
                     color = Color.White
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun OverdriveButton(
+    energy: Float,
+    isActive: Boolean,
+    onActivate: () -> Unit,
+    modifier: Modifier = Modifier,
+    size: Dp = 56.dp
+) {
+    val isReady = energy >= 0.99f
+    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
+
+    val infiniteTransition = rememberInfiniteTransition(label = "odPulse")
+    val pulseScale by infiniteTransition.animateFloat(
+        initialValue = 0.94f,
+        targetValue = 1.06f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(750),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "odScale"
+    )
+
+    val buttonScale = if (isActive || isReady) pulseScale else 1.0f
+
+    val borderColor = when {
+        isActive -> Color(0xFFFFD54F)
+        isReady -> Color(0xFFFFB300)
+        else -> Color(0x5500E5FF)
+    }
+
+    val bgColor = when {
+        isActive -> Color(0x99FF8F00)
+        isReady -> Color(0x88FF6F00)
+        else -> Color(0x66060F1E)
+    }
+
+    Box(
+        modifier = modifier
+            .size(size)
+            .scale(buttonScale)
+            .clip(CircleShape)
+            .background(bgColor)
+            .border(2.dp, borderColor, CircleShape)
+            .testTag("btn_overdrive")
+            .pointerInput(isReady || isActive) {
+                awaitEachGesture {
+                    awaitFirstDown(requireUnconsumed = false)
+                    if (isReady && !isActive) {
+                        haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+                        onActivate()
+                    }
+                    waitForUpOrCancellation()
+                }
+            },
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Icon(
+                imageVector = AppIcons.Bolt,
+                contentDescription = "Chrono Overdrive",
+                tint = if (isReady || isActive) Color(0xFFFFE082) else Color(0x8800E5FF),
+                modifier = Modifier.size(20.dp)
+            )
+            Text(
+                text = when {
+                    isActive -> "SURGE"
+                    isReady -> "OVERDRIVE"
+                    else -> "${(energy * 100).toInt()}%"
+                },
+                fontSize = 8.sp,
+                fontWeight = FontWeight.Black,
+                letterSpacing = 0.5.sp,
+                color = if (isReady || isActive) Color.White else Color(0xAA00E5FF)
+            )
+            if (isReady && !isActive) {
+                Text(
+                    text = "READY!",
+                    fontSize = 7.sp,
+                    fontWeight = FontWeight.Black,
+                    color = Color(0xFFFFD54F)
                 )
             }
         }
